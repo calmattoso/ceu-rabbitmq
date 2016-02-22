@@ -1,25 +1,21 @@
-RabbitMQ/OMF Presentation - Second
-==================================
+# RabbitMQ/OMF Presentation - Second
 
-RabbitMQ
---------
-— basic.consume
-— exchange.declare
-— queue.declare
-— basic.publish
-—  etc
-all use the RPC method, which simply calls *send* on the socket. As the socket is *non-blocking* if send cannot be done this call will fail.
+## RabbitMQ
+`basic.consume`, `exchange.declare`, `queue.declare`,  `basic.publish`, etc
+all use the RPC method, which simply calls *send* on the socket. As the socket is *non-blocking* if send cannot be done this call will fail. 
 
-consume_message indirectly uses *select* or *poll*, before *recv*. So a timeout value can be given to make the call effectively non-blocking.
+Additionally, a timeout is used in `amqp_try_send`/`amqp_try_read` to `poll` in case not all bytes can be sent/read. The timeout used if the connections *heartbeat* value.
 
-js experiment: hello world was printed even though server was killed. so i guess the implementation is fully asynchronous and error is being ignored due to not passing a callback to handle it.
+The `simple_rpc` method after sending a method using `amqp_send_method` calls `wait_frame_inner` to get a response from the server to find out if the method worked (and get any necessary reply parameters e.g. queue name when server should set it).
 
-OMF
----
-ongoing
+`consume_message` indirectly uses `select` or `poll`, before `recv`, with a user provided timeout if any, i.e. the call can be made effectively non-blocking.
 
-RabbitMQ Presentation - First
-=============================
+JS experiment: hello world was printed even though server was killed. so i guess the implementation is fully asynchronous and error is being ignored due to not passing a callback to handle it.
+
+# OMF
+notes wip
+
+# RabbitMQ Presentation - First
 
 AMQP: standard for message passing
 - dev started by JPMorgan
@@ -38,7 +34,7 @@ Messages: label + payload
 
 RabbitMQ is a message broker that enables fast and reliable message passing facilitating of decoupled applications in a distributed fashion.
 
-- Built on Erlang “Build massively scalable soft real-time systems”
+- Built on Erlang *“Build massively scalable soft real-time systems”*
 - Low latency
 - Fault Tolerant
 - Reliable
