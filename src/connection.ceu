@@ -11,12 +11,11 @@ class Connection with
   var char[]                 user;
   var char[]                 password;
 
-  event void open;  // amqp: connection.open 
-  event void close; // amqp: connection.close
+output:
+  var _amqp_connection_state_t_& state;
 
   function (void)=>int next_channel_id;
   function (void)=>int inc_channel_id;
-  function (void)=>_amqp_connection_state_t_& get_state;
 do
   native/pre do
     ##include <stdlib.h>
@@ -58,68 +57,63 @@ do
     channel_id = channel_id + 1;
   end
 
-  function (void)=>_amqp_connection_state_t_& get_state do
-    return &conn!;
-  end
-
   // body
-    finalize
-      conn = &_amqp_new_connection();
-    with
-      var _amqp_rpc_reply_t res = _amqp_connection_close(&&conn!, _AMQP_REPLY_SUCCESS);
-      _die_on_amqp_error(res, "Closing connection.");
-      _die_on_error(_amqp_destroy_connection(&&conn!), "Destroying connection object."); // garbage collection
-    end
+  finalize
+    conn = &_amqp_new_connection();
+  with
+    var _amqp_rpc_reply_t res = _amqp_connection_close(&&conn!, _AMQP_REPLY_SUCCESS);
+    _die_on_amqp_error(res, "Closing connection.");
+    _die_on_error(_amqp_destroy_connection(&&conn!), "Destroying connection object."); // garbage collection
+      
+    #if 1
+      _printf("Closed connection.\n");
+    #endif
+  end
+  this.state = &conn!;
 
-    var _amqp_socket_t&& socket = _amqp_tcp_socket_new(&&conn!);
-	  if socket == null then
-	    _die("creating TCP socket");
-	  end
+  var _amqp_socket_t&& socket = _amqp_tcp_socket_new(&&conn!);
+	if socket == null then
+	  _die("creating TCP socket");
+	end
 
-	  var int status = _amqp_socket_open(socket, &&this.hostname, this.port);
+	var int status = _amqp_socket_open(socket, (_char&&)&&this.hostname, this.port);
+	if status then
+    _die("opening TCP socket");
+	end
 
-	  if status then
-	    _die("opening TCP socket");
-	  end
+  var _amqp_rpc_reply_t res = _amqp_login(&&conn!, (_char&&)&&this.vhost, this.channel_max, this.frame_max, 0, this.sasl_method, (_char&&)&&this.user, (_char&&)&&this.password);
+	_die_on_amqp_error(res, "Logging in");
 
-    var _amqp_rpc_reply_t res = _amqp_login(&&conn!, &&this.vhost, this.channel_max, this.frame_max, 0, this.sasl_method, &&this.user, &&this.password);
-	  _die_on_amqp_error(res, "Logging in");
-  
-    await this.close;
+  #if 1
+    _printf("Opened connection.\n");
+  #endif
+
+  await FOREVER;
 end
 
-#if 1
+#if 0
 // little test
-var Connection c with
-  this.hostname = [] .. "localhost";
-  this.port = 5672;
-  this.vhost = [] .. "/";
-  this.channel_max = 0;
-  this.frame_max = 131072;
-  this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-  this.user = [] .. "guest";
-  this.password = [] .. "guest";
-end;
-
-
-input void TEST_OPEN;
 input void TEST_CLOSE;
-par do
-  await TEST_OPEN;
-  
-  emit c.open;
-  _printf("Opened connection.\n");
+par/or do
+   var Connection c with
+    this.hostname = [] .. "localhost";
+    this.port = 5672;
+    this.vhost = [] .. "/";
+    this.channel_max = 0;
+    this.frame_max = 131072;
+    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
+    this.user = [] .. "guest";
+    this.password = [] .. "guest";
+  end;
 
   await TEST_CLOSE;
-  emit c.close;
-  _printf("Closed connection.\n");
 with
   async do
-    emit TEST_OPEN;
     emit TEST_CLOSE;
   end
-  escape 0;
 end
+
+escape 0;
 #endif
 
 #endif
