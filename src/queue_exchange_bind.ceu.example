@@ -1,0 +1,14 @@
+class Bind with
+  var Queue& q;
+  var Exchange& e;
+do
+  _bind() finalize with _unbind() end;
+  await FOREVER;
+end
+
+var Bind b with
+  a, b
+end;
+
+kill b;
+
