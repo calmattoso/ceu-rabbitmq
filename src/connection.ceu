@@ -16,9 +16,9 @@ class Connection with
 
   function (void)=>int next_channel_id;
   function (void)=>int inc_channel_id;
-  function (void)=>_amqp_connection_state_t get_state;
+  function (void)=>_amqp_connection_state_t_& get_state;
 do
-  native do
+  native/pre do
     ##include <stdlib.h>
 	  ##include <stdio.h>
 	  ##include <string.h>
@@ -28,20 +28,25 @@ do
 	  ##include <amqp.h>
 	  ##include <amqp_framing.h>
 
-    ##include "/home/carlos/ceu_rabbitmq_exps/utils.c"
+    typedef struct amqp_connection_state_t_ amqp_connection_state_t_;
 
-    typedef amqp_socket_t* amqp_socket_tp;
+    ##include "/home/cmattoso/ceu_rabbitmq/src/utils.c"
   end
   native @const _NULL;
 
   // prototype hacks
-  native @plain _amqp_connection_state_t;
+  native @plain _amqp_connection_state_t_;
   native @plain _amqp_socket_t;
   native @plain _amqp_rpc_reply_t;
   native @plain _amqp_socket_tp; 
+  native @nohold _amqp_connection_close;
+  native @nohold _amqp_login;
+  native @pure _amqp_tcp_socket_new;
+  native @nohold _amqp_socket_open;
+  native @nohold _amqp_destroy_connection;
 
   // protected variables
-  var _amqp_connection_state_t conn = _NULL;
+  var _amqp_connection_state_t_&? conn;
   var int channel_id = 1;
 
   // methods
@@ -53,42 +58,37 @@ do
     channel_id = channel_id + 1;
   end
 
-  function (void)=>_amqp_connection_state_t get_state do
-    return conn;
+  function (void)=>_amqp_connection_state_t_& get_state do
+    return &conn!;
   end
 
   // body
-  par/or do
-    await this.open;
+    finalize
+      conn = &_amqp_new_connection();
+    with
+      var _amqp_rpc_reply_t res = _amqp_connection_close(&&conn!, _AMQP_REPLY_SUCCESS);
+      _die_on_amqp_error(res, "Closing connection.");
+      _die_on_error(_amqp_destroy_connection(&&conn!), "Destroying connection object."); // garbage collection
+    end
 
-  
-    conn = _amqp_new_connection();
-
-    var _amqp_socket_tp socket = _amqp_tcp_socket_new(conn);
-	  if socket == _NULL then
+    var _amqp_socket_t&& socket = _amqp_tcp_socket_new(&&conn!);
+	  if socket == null then
 	    _die("creating TCP socket");
 	  end
 
-	  var int status = _amqp_socket_open(socket, &&this.hostname, this.port) finalize with nothing; end;
+	  var int status = _amqp_socket_open(socket, &&this.hostname, this.port);
 
 	  if status then
 	    _die("opening TCP socket");
 	  end
 
-    var _amqp_rpc_reply_t res = _amqp_login(conn, &&this.vhost, this.channel_max, this.frame_max, 0, this.sasl_method, &&this.user, &&this.password) finalize with nothing; end;
+    var _amqp_rpc_reply_t res = _amqp_login(&&conn!, &&this.vhost, this.channel_max, this.frame_max, 0, this.sasl_method, &&this.user, &&this.password);
 	  _die_on_amqp_error(res, "Logging in");
-
-    await FOREVER;
-  with
+  
     await this.close;
-
-    var _amqp_rpc_reply_t res = _amqp_connection_close(conn, _AMQP_REPLY_SUCCESS);
-    _die_on_amqp_error(res, "Logging in");
-    _die_on_error(_amqp_destroy_connection(conn), "Ending connection"); // garbage collection
-  end
 end
 
-/*
+#if 1
 // little test
 var Connection c with
   this.hostname = [] .. "localhost";
@@ -120,5 +120,6 @@ with
   end
   escape 0;
 end
-*/
+#endif
+
 #endif
