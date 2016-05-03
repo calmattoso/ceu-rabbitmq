@@ -91,11 +91,14 @@ do
   await FOREVER;
 end
 
-#if 0
+#if 1
 // little test
+input void TEST_OPEN;
 input void TEST_CLOSE;
 par/or do
-   var Connection c with
+  await TEST_OPEN;
+
+  var Connection c with
     this.hostname = [] .. "localhost";
     this.port = 5672;
     this.vhost = [] .. "/";
@@ -103,12 +106,13 @@ par/or do
     this.frame_max = 131072;
     this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
     this.user = [] .. "guest";
-    this.password = [] .. "guest";
-  end;
+    this.password = [] .. "guest2";
+  end; 
 
   await TEST_CLOSE;
 with
   async do
+    emit TEST_OPEN;
     emit TEST_CLOSE;
   end
 end
