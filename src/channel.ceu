@@ -5,103 +5,99 @@
 
 class Channel with
   var Connection& conn;
-
-  event void open;  // amqp: connection.open 
-  event void close; // amqp: connection.close
-  // TODO: event void flow;
-
-  function (void)=>int get_channel_id;
-  function (void)=>Connection& get_connection;
+output:
+  var int id;
 do
   native do
     ##include <stdlib.h>
-	  ##include <stdio.h>
-	  ##include <string.h>
+    ##include <stdio.h>
+    ##include <string.h>
+    ##include <stdint.h>
+    
+    ##include <amqp_tcp_socket.h>
+    ##include <amqp.h>
+    ##include <amqp_framing.h>
 
-	  ##include <stdint.h>
-	  ##include <amqp_tcp_socket.h>
-	  ##include <amqp.h>
-	  ##include <amqp_framing.h>
-
-    ##include "/home/carlos/ceu_rabbitmq_exps/utils.c"
+    ##include "/home/cmattoso/ceu_rabbitmq/src/utils.c"
   end
+
   // prototype hacks
-  native @plain _amqp_connection_state_t;
+  native @nohold  _amqp_get_rpc_reply;
+  native @nohold  _amqp_channel_open;
+  native @nohold  _amqp_channel_close;
+  native @plain _amqp_connection_state_t_;
 
   // protected variables
-  var int channel_id = call conn.next_channel_id();
-  call conn.inc_channel_id();
-
-  _printf("channel id: %d\n", call conn.next_channel_id());
-
-  // methods
-  function (void)=>int get_channel_id do
-    return channel_id; 
-  end
-
-  function (void)=>Connection& get_connection do
-    return &this.conn; 
-  end
+  this.id = conn.next_channel_id();
+  conn.inc_channel_id();
 
   // body
-  par/or do
-    await this.open;
-    
-    var _amqp_connection_state_t conn_state = call conn.get_state();
-    _amqp_channel_open(conn_state, channel_id);
-    _die_on_amqp_error(_amqp_get_rpc_reply(conn_state), "Opening channel");
+    _amqp_channel_open(&&conn.state, id);
 
-    await FOREVER;
-  with
-    await this.close;
+  // this.conn.open_channel(&this);
+  ///finalize with
+    // this.conn.close_channel(&this);
 
-    var _amqp_connection_state_t conn_state = call conn.get_state();
-    _die_on_amqp_error(_amqp_channel_close(conn_state, channel_id, _AMQP_REPLY_SUCCESS), "Closing channel");
-    
-  end
+    _die_on_amqp_error(_amqp_get_rpc_reply(&&conn.state), "Opening channel");
+    _printf("Opened channel!\n");
+    finalize with
+      _die_on_amqp_error(_amqp_channel_close(&&conn.state, id, _AMQP_REPLY_SUCCESS), "Closing channel");
+      _printf("Closed channel!\n");
+    end
+  await FOREVER;
 end
 
-/*
+#if 1
 // little test
-var Connection c with
-  this.hostname = [] .. "localhost";
-  this.port = 5672;
-  this.vhost = [] .. "/";
-  this.channel_max = 0;
-  this.frame_max = 131072;
-  this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-  this.user = [] .. "guest";
-  this.password = [] .. "guest";
-end;
-
-var Channel ch with
-  this.conn = &c;
-end;
-
-input void TEST_OPEN;
 input void TEST_CLOSE;
-par do
-  await TEST_OPEN;
-  
-  emit c.open;
-  _printf("Opened connection.\n");
-  
-  emit ch.open;
-  _printf("Opened channel!\n");
+par/or do
+  var Connection c with
+    this.hostname = [] .. "localhost";
+    this.port = 5672;
+    this.vhost = [] .. "/";
+    this.channel_max = 0;
+    this.frame_max = 131072;
+    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
+    this.user = [] .. "guest";
+    this.password = [] .. "guest";
+  end;
 
-  await TEST_CLOSE;
 
-  emit ch.close;
-  _printf("Closed channel.\n");
+//pool Channel[5] chs; //segfault
+  watching c do
+    #if 1  
+    var Channel ch with
+      this.conn = &c;
+    end;
+    _printf("Channel ID: %d\n", ch.id);
 
-  emit c.close;
-  _printf("Closed connection.\n");
+    var Channel ch2 with
+      this.conn = &c;
+    end;
+    _printf("Channel ID: %d\n", ch2.id);
+    #endif
+
+    #if 0
+    // Segfault:
+    // =========
+    loop i in 5 do
+      var Channel&&? ch =
+        spawn Channel in chs with
+          this.conn = &c;
+        end;
+      _printf("Channel ID: %d\n", ch!:id);
+    end
+    #endif
+
+    await TEST_CLOSE;
+  end
 with
   async do
-    emit TEST_OPEN;
     emit TEST_CLOSE;
   end
-  escape 0;
 end
-*/
+
+escape 0;
+#endif
+
 #endif
