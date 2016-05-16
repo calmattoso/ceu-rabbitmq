@@ -1,2 +1,2 @@
 # ceu-rabbitmq
-Experiments with Céu and RabbitMQ
+Céu API for RabbitMQ.
