@@ -27,9 +27,13 @@
 *.i*86
 *.x86_64
 *.hex
+src/build
 
 # Debug files
 *.dSYM/
 
 # Mac FS file
 .DS_Store
+
+# Editting files
+*~
