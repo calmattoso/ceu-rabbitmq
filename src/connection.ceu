@@ -19,17 +19,17 @@ output:
 do
   native/pre do
     ##include <stdlib.h>
-	  ##include <stdio.h>
-	  ##include <string.h>
+    ##include <stdio.h>
+    ##include <string.h>
 
-	  ##include <stdint.h>
-	  ##include <amqp_tcp_socket.h>
-	  ##include <amqp.h>
-	  ##include <amqp_framing.h>
+    ##include <stdint.h>
+    ##include <amqp_tcp_socket.h>
+    ##include <amqp.h>
+    ##include <amqp_framing.h>
 
     typedef struct amqp_connection_state_t_ amqp_connection_state_t_;
 
-    ##include "/home/cmattoso/ceu_rabbitmq/src/utils.c"
+    ##include "utils.c"
   end
   native @const _NULL;
 
@@ -91,7 +91,7 @@ do
   await FOREVER;
 end
 
-#if 1
+#if 0
 // little test
 input void TEST_OPEN;
 input void TEST_CLOSE;
@@ -106,7 +106,7 @@ par/or do
     this.frame_max = 131072;
     this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
     this.user = [] .. "guest";
-    this.password = [] .. "guest2";
+    this.password = [] .. "guest";
   end; 
 
   await TEST_CLOSE;

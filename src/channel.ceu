@@ -18,7 +18,7 @@ do
     ##include <amqp.h>
     ##include <amqp_framing.h>
 
-    ##include "/home/cmattoso/ceu_rabbitmq/src/utils.c"
+    ##include "utils.c"
   end
 
   // prototype hacks
