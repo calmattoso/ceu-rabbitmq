@@ -48,19 +48,20 @@ do
 
   // Convert the exchange name to the expected format, if pre-defined by user
   name_bytes = _amqp_cstring_bytes((_char&&)&&name); // if empty, uses the default `amq.direct` exchange
-  
-  var _amqp_bytes_t type_bytes = _amqp_cstring_bytes((_char&&)&&type);
+  if name_bytes.len then // if empty, the default exchange is being used and it can't be declared
+    var _amqp_bytes_t type_bytes = _amqp_cstring_bytes((_char&&)&&type);
 
-  // Declare the exchange
-  // amqp_exchange_declare(amqp_connection_state_t state, amqp_channel_t channel,
-  //                       amqp_bytes_t exchange, amqp_bytes_t type, amqp_boolean_t passive,
-  //                       amqp_boolean_t durable, amqp_boolean_t auto_delete, 
-  //                       amqp_boolean_t internal, amqp_table_t arguments);
-  _amqp_exchange_declare(&&channel.conn.state, channel.id, name_bytes, 
-                         type_bytes, (_amqp_boolean_t) passive, 
-                         (_amqp_boolean_t) durable, (_amqp_boolean_t) auto_delete,
-                         (_amqp_boolean_t) internal, arguments);
-  _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring exchange");
+    // Declare the exchange
+    // amqp_exchange_declare(amqp_connection_state_t state, amqp_channel_t channel,
+    //                       amqp_bytes_t exchange, amqp_bytes_t type, amqp_boolean_t passive,
+    //                       amqp_boolean_t durable, amqp_boolean_t auto_delete, 
+    //                       amqp_boolean_t internal, amqp_table_t arguments);
+    _amqp_exchange_declare(&&channel.conn.state, channel.id, name_bytes, 
+                           type_bytes, (_amqp_boolean_t) passive, 
+                           (_amqp_boolean_t) durable, (_amqp_boolean_t) auto_delete,
+                           (_amqp_boolean_t) internal, arguments);
+    _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring exchange");
+  end
 
   await FOREVER;
 end
@@ -112,6 +113,18 @@ par/or do
       end;
       _printf("Created Exchange 'direct' with name '%s'.\n", 
               _stringify_bytes(e2.name_bytes));
+
+     var Exchange amq_direct with
+        this.channel = &ch;
+        this.name = [].."";
+        this.type = [].."direct";
+        this.passive = false;
+        this.durable = false;
+        this.auto_delete = true;
+        this.internal = false;
+        this.arguments = _amqp_empty_table;
+      end;
+      _printf("Using default exchange.\n");
 
       await TEST_CLOSE;
     end
