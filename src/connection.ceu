@@ -2,14 +2,14 @@
 #define _CONNECTION_CEU
 
 class Connection with
-  var char[]                 hostname;
-  var int                    port;
-  var char[]                 vhost;
-  var int                    channel_max;
-  var int                    frame_max;
-  var int                    sasl_method;
-  var char[]                 user;
-  var char[]                 password;
+  var char[] hostname;
+  var int    port;
+  var char[] vhost;
+  var int    channel_max;
+  var int    frame_max;
+  var int    sasl_method;
+  var char[] user;
+  var char[] password;
 
 output:
   var _amqp_connection_state_t_& state;
