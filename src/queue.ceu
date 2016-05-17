@@ -7,11 +7,12 @@
 class Queue with
   var Channel& channel;
 input:
-  var char[]   name;
-  var bool     passive;
-  var bool     durable;
-  var bool     exclusive;
-  var bool     auto_delete;
+  var char[] name;
+  var bool   passive;
+  var bool   durable;
+  var bool   exclusive;
+  var bool   auto_delete;
+  
   var _amqp_table_t arguments;
 output:
   var _amqp_bytes_t name_bytes; // export the queue name in the library format
