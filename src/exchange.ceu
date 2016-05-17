@@ -66,7 +66,7 @@ do
   await FOREVER;
 end
 
-#if 1
+#if 0
 // little test
 input void TEST_CLOSE;
 par/or do
