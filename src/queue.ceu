@@ -28,8 +28,6 @@ do
     ##include <amqp_framing.h>
 
     ##include "utils.c"
-
-    typedef amqp_queue_declare_ok_t* amqp_queue_declare_ok_tp;
   end
 
   // prototype hacks
@@ -48,13 +46,8 @@ do
 
   // BODY
 
-  // Convert the queue name to the expected format, if pre-defined by user
-  var int name_len = _strlen((_char&&)&&name);
-  if not name_len then
-    name_bytes = _amqp_empty_bytes;
-  else
-    name_bytes = _amqp_cstring_bytes((_char&&)&&name);
-  end
+  // Convert the queue name to the expected format
+  name_bytes = _amqp_cstring_bytes((_char&&)&&name);
 
   // Create the queue
   // amqp_queue_declare(amqp_connection_state_t state, amqp_channel_t channel,
@@ -69,7 +62,7 @@ do
   _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring queue");
 
   // Get the broker defined queue name, which uniquely identifies the queue
-  if not name_len then
+  if not name_bytes.len then
     name_bytes = _amqp_bytes_malloc_dup((*r).queue);
     finalize with
       _amqp_bytes_free(name_bytes);
