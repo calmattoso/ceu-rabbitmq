@@ -1,0 +1,116 @@
+#ifndef _Q2X_CEU
+#define _Q2X_CEU
+
+#include "channel.ceu"
+#include "queue.ceu"
+#include "exchange.ceu"
+
+class Q2X_Bind with
+  var Channel&  channel;
+  var Queue&    queue;
+  var Exchange& exchange;
+	var char[]    binding_key;
+  var _amqp_table_t arguments;
+do
+  native/pre do
+    ##include <stdlib.h>
+    ##include <stdio.h>
+    ##include <string.h>
+    ##include <stdint.h>
+    
+    ##include <amqp_tcp_socket.h>
+    ##include <amqp.h>
+    ##include <amqp_framing.h>
+
+    ##include "utils.c"
+  end
+
+  // prototype hacks
+  native @plain   _amqp_table_t;   // arguments for method; simple `struct` with inner pointer: https://git.io/vrcW9
+  native @plain   _amqp_bytes_t;   // amqp representation for strings; `struct` with inner bytes pointer: https://git.io/vrcWN
+  native @nohold  _amqp_get_rpc_reply;
+  native @pure    _amqp_queue_bind;
+  native @pure    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
+  native @pure    _strlen;
+
+	var _amqp_bytes_t binding_key_bytes = _amqp_cstring_bytes((_char&&)&&binding_key);
+
+	// Bind queue to exchange
+	// amqp_queue_bind(amqp_connection_state_t state, amqp_channel_t channel, 
+  //                 amqp_bytes_t queue, amqp_bytes_t exchange, 
+  //                 amqp_bytes_t routing_key, amqp_table_t arguments)
+	_amqp_queue_bind(&&channel.conn.state, channel.id, queue.name_bytes,
+									 exchange.name_bytes, binding_key_bytes, arguments);
+  _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Binding queue to exchange.");						 
+	
+  await FOREVER;
+end
+
+#if 1
+// little test
+input void TEST_CLOSE;
+par/or do
+  var Connection c with
+    this.hostname = [] .. "localhost";
+    this.port = 5672;
+    this.vhost = [] .. "/";
+    this.channel_max = 0;
+    this.frame_max = 131072;
+    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
+    this.user = [] .. "guest";
+    this.password = [] .. "guest";
+  end;
+
+  watching c do
+    var Channel ch with
+      this.conn = &c;
+    end;
+    _printf("Channel ID: %d\n", ch.id);
+
+    watching ch do
+      var Queue q with
+        this.channel = &ch;
+        this.name = [].."test_queue";
+        this.passive = false;
+        this.durable = false;
+        this.exclusive = false;
+        this.auto_delete = true;
+        this.arguments = _amqp_empty_table;
+      end;
+      _printf("Created Queue with name '%s'.\n", _stringify_bytes(q.name_bytes));
+
+      var Exchange amq_direct with
+        this.channel = &ch;
+        this.name = [].."amq.direct";
+        this.type = [].."direct";
+        this.passive = false;
+        this.durable = true;
+        this.auto_delete = false;
+        this.internal = false;
+        this.arguments = _amqp_empty_table;
+      end;
+      _printf("Using default direct exchange 'amq.direct'.\n");
+
+      
+			var Q2X_Bind bind with
+        this.channel  = &ch;
+				this.queue    = &q;
+				this.exchange = &amq_direct;
+        this.binding_key = [].."baloney";
+        this.arguments = _amqp_empty_table;
+			end;
+      _printf("Successfully bound Queue to Exchange.\n");
+
+      await TEST_CLOSE;
+    end
+  end
+with
+  async do
+    emit TEST_CLOSE;
+  end
+end
+
+escape 0;
+#endif
+
+#endif
