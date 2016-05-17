@@ -1,0 +1,140 @@
+#ifndef _QUEUE_CEU
+#define _QUEUE_CEU
+
+#include "connection.ceu"
+#include "channel.ceu"
+
+class Queue with
+  var Channel& channel;
+input:
+  var char[]   name;
+  var bool     passive;
+  var bool     durable;
+  var bool     exclusive;
+  var bool     auto_delete;
+  var _amqp_table_t arguments;
+output:
+  var _amqp_bytes_t name_bytes; // export the queue name in the library format
+do
+  native/pre do
+    ##include <stdlib.h>
+    ##include <stdio.h>
+    ##include <string.h>
+    ##include <stdint.h>
+    
+    ##include <amqp_tcp_socket.h>
+    ##include <amqp.h>
+    ##include <amqp_framing.h>
+
+    ##include "utils.c"
+
+    typedef amqp_queue_declare_ok_t* amqp_queue_declare_ok_tp;
+  end
+
+  // prototype hacks
+  native @plain   _amqp_boolean_t; // this is an `int`
+  native @plain   _amqp_table_t;   // arguments for method; simple `struct` with inner pointer: https://git.io/vrcW9
+  native @plain   _amqp_bytes_t;   // amqp representation for strings; `struct` with inner bytes pointer: https://git.io/vrcWN
+  native @plain   _amqp_connection_state_t_;
+  native @plain   _amqp_queue_declare_ok_tp;
+  native @nohold  _amqp_get_rpc_reply;
+  native @nohold  _amqp_bytes_malloc_dup;
+  native @nohold  _stringify_bytes;
+  native @nohold  _free;
+  native @pure    _amqp_queue_declare;
+  native @pure    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
+  native @pure    _strlen;
+
+  // BODY
+
+  // Convert the queue name to the expected format, if pre-defined by user
+  var int name_len = _strlen((_char&&)&&name);
+  if not name_len then
+    name_bytes = _amqp_empty_bytes;
+  else
+    name_bytes = _amqp_cstring_bytes((_char&&)&&name);
+  end
+
+  // Create the queue
+  // amqp_queue_declare(amqp_connection_state_t state, amqp_channel_t channel,
+  //                    amqp_bytes_t queue, amqp_boolean_t passive, 
+  //                    amqp_boolean_t durable, amqp_boolean_t exclusive, 
+  //                    amqp_boolean_t auto_delete, amqp_table_t arguments);
+  var _amqp_queue_declare_ok_t&& r = 
+      _amqp_queue_declare(&&channel.conn.state, channel.id, name_bytes, 
+                          (_amqp_boolean_t) passive, (_amqp_boolean_t) durable,
+                          (_amqp_boolean_t) exclusive, (_amqp_boolean_t) auto_delete,
+                          arguments);
+  _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring queue");
+
+  // Get the broker defined queue name, which uniquely identifies the queue
+  if not name_len then
+    name_bytes = _amqp_bytes_malloc_dup((*r).queue);
+    finalize with
+      _amqp_bytes_free(name_bytes);
+    end
+    if name_bytes.bytes == null then
+      _die("Out of memory while copying queue name");
+    end
+  end
+
+  await FOREVER;
+end
+
+#if 1
+// little test
+input void TEST_CLOSE;
+par/or do
+  var Connection c with
+    this.hostname = [] .. "localhost";
+    this.port = 5672;
+    this.vhost = [] .. "/";
+    this.channel_max = 0;
+    this.frame_max = 131072;
+    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
+    this.user = [] .. "guest";
+    this.password = [] .. "guest";
+  end;
+
+  watching c do
+    var Channel ch with
+      this.conn = &c;
+    end;
+    _printf("Channel ID: %d\n", ch.id);
+
+    watching ch do
+      var Queue q with
+        this.channel = &ch;
+        this.name = [].."test_queue";
+        this.passive = false;
+        this.durable = false;
+        this.exclusive = false;
+        this.auto_delete = true;
+        this.arguments = _amqp_empty_table;
+      end;
+      _printf("Created Queue with name '%s'.\n", _stringify_bytes(q.name_bytes));
+
+      var Queue q2 with
+        this.channel = &ch;
+        this.name = [].."";
+        this.passive = false;
+        this.durable = false;
+        this.exclusive = false;
+        this.auto_delete = true;
+        this.arguments = _amqp_empty_table;
+      end;
+      _printf("Created Queue with name '%s'.\n", _stringify_bytes(q2.name_bytes));
+
+      await TEST_CLOSE;
+    end
+  end
+with
+  async do
+    emit TEST_CLOSE;
+  end
+end
+
+escape 0;
+#endif
+
+#endif
