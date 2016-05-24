@@ -41,20 +41,21 @@ do
   //                        amqp_boolean_t mandatory, amqp_boolean_t immediate,
   //                        struct amqp_basic_properties_t_ const *properties,
   //                        amqp_bytes_t body)
-  //async/thread (channel,exchange,body,routing_key,mandatory,immediate,properties) do
+  async/thread (channel,exchange,body,routing_key,mandatory,immediate,properties) do
     var int ret = 0;
     var _amqp_bytes_t body_bytes = _amqp_cstring_bytes((_char&&)&&body);
     var _amqp_bytes_t routing_key_bytes = _amqp_cstring_bytes((_char&&)&&routing_key);
-
+// atomic do
     _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
                         routing_key_bytes, (_amqp_boolean_t) mandatory,
                         (_amqp_boolean_t) immediate, &&properties, body_bytes);
+// end
    _die_on_error(ret, "Failed to publish message.");
-  //end
+  end
 end
 
 
-#if 1
+#if 0
 // little test
 input void TEST_CLOSE;
 par/or do

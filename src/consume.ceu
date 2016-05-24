@@ -127,7 +127,6 @@ end
       end;
       _printf("Using default direct exchange 'amq.direct'.\n");
 
-      
 			var Q2X_Bind bind with
         this.channel  = &ch;
 				this.queue    = &q;
