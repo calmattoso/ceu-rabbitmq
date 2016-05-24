@@ -41,17 +41,20 @@ do
   //                        amqp_boolean_t mandatory, amqp_boolean_t immediate,
   //                        struct amqp_basic_properties_t_ const *properties,
   //                        amqp_bytes_t body)
-  var _amqp_bytes_t body_bytes = _amqp_cstring_bytes((_char&&)&&body);
-  var _amqp_bytes_t routing_key_bytes = _amqp_cstring_bytes((_char&&)&&routing_key);
-  var int ret = 
+  //async/thread (channel,exchange,body,routing_key,mandatory,immediate,properties) do
+    var int ret = 0;
+    var _amqp_bytes_t body_bytes = _amqp_cstring_bytes((_char&&)&&body);
+    var _amqp_bytes_t routing_key_bytes = _amqp_cstring_bytes((_char&&)&&routing_key);
+
     _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
                         routing_key_bytes, (_amqp_boolean_t) mandatory,
                         (_amqp_boolean_t) immediate, &&properties, body_bytes);
    _die_on_error(ret, "Failed to publish message.");
+  //end
 end
 
 
-#if 0
+#if 1
 // little test
 input void TEST_CLOSE;
 par/or do
@@ -91,7 +94,7 @@ par/or do
                        _AMQP_BASIC_DELIVERY_MODE_FLAG;
         props.content_type = _amqp_cstring_bytes("text/plain");
         props.delivery_mode = 2; /* persistent delivery mode */        
-        var Publish _ with
+        do Publish with
           this.channel = &ch;
           this.exchange = &amq_direct;
           this.routing_key = [].."test";
