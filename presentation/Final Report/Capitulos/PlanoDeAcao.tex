@@ -1,0 +1,32 @@
+
+\chapter{Plano de A\c{c}\~ao}
+
+\section{Proposta Original}
+
+Fez-se um estudo entre os meses de Janeiro e Março focado nas partes fundamentais do trabalho. Primeiramente, estudou-se AMQP e RabbitMQ (uma implementa\c{c}\~ao popular de \textit{broker} AMQP), focando-se tanto no projeto de arquitetura quanto em sessões pr\'aticas segundo tutorais. Posteriormente, estudou-se o arcabou\c{c}o OMF, de modo a tamb\'em se entender o projeto de arquitetura deste e como se encaixam, especificamente, o controlador de experimentos, os controladores de recursos e o FRCP. Com base nestes fundamentos dar-se-\'a partida no desenvolvimento do projeto ao longo do ano.
+
+No que tange a biblioteca de AMQP em C\'eu, foi proposta a implementação dos m\'etodos definidos pelo protocolo e dos respectivos testes que validassem seu correto funcionamento. Al\'em disso, propôs-se um estudo de demais bibliotecas AMQP mirando-se paridade de funcionalidades. Quanto ao controlador de experimentos OMF, seria primeiramente estudada em detalhes sua implementa\c{c}\~ao oficial em \textit{Ruby}. Com base nisto, seria desenvolvida uma s\'erie de m\'odulos e testes associados, a fim de se compor o CE OMF C\'eu. Assim, a implementa\c{c}\~ao em C\'eu proposta seria o mais robusta e extens\'ivel poss\'ivel.
+
+Na primeira quinzena de Maio, deveria ter sido entregue a implementa\c{c}\~ao de uma vers\~ao inicial da biblioteca de AMQP em C\'eu, na qual estariam implementados os principais m\'etodos AMQP com respetivos testes de unidade. Esta biblioteca seria continuamente aprimorada ao longo do ano, principalmente atrav\'es da corre\c{c}\~ao de \textit{bugs} e melhorias no c\'odigo, mas tamb\'em, possivelmente, atrav\'es da adi\c{c}\~ao de extens\~oes do RabbitMQ.
+
+Ao longo de Maio pretendia-se desenvolver a base do CE OMF em C\'eu, especificamente os componentes para defini\c{c}\~ao de propriedades e aplica\c{c}\~oes de um experimento. Al\'em disso, tamb\'em deveria ter sido produzido um m\'odulo para o FRCP. Em Junho, teria-se estendido o CE com a adi\c{c}\~ao de grupos e eventos. Ao final de Junho, deveria ser poss\'ivel ao pesquisador executar um experimento utilizando todos os recursos aqui listados, mesmo que ainda estivessem presentes limita\c{c}\~oes.
+
+\section{Realizações em Projeto Final I}
+
+Ao longo do primeiro período constatou-se que a proposta original fora um tanto ambiciosa, dadas as limitações de tempo impostas ao aluno devido a participação em um elevado número de disciplinas. Contudo, produziu-se uma ampla documentação sobre os conceitos, regras e implementações das tecnologias AMQP e OMF e desenvolveu-se parte significativa da implementação da biblioteca Céu para AMQP.
+
+A principal realização foi definitivamente o desenvolvimento da biblioteca AMQP em Céu. Isto exigiu uma familiarização as peculiaridades da linguagem e uma reflexão sobre como melhor conciliar os conceitos de AMQP com o modelo de programação estruturada que impera em Céu. Por ser ainda uma linguagem em desenvolvimento, a implementação de alguns módulos esbarrou em \textit{bugs} do compilador; estes, todavia, foram prontamente corrigidos pelo autor da linguagem.
+
+Quanto ao OMF, embora fora planejado o desenvolvimento de um módulo limitado para controle de experimentos em Céu, isto não aconteceu. Contudo, estendeu-se o estudo do protocolo realizado no começo do ano através de uma análise da implementação em \textit{Ruby} do controlador de experimentos, o que possibilitou a compreensão da maneira como grupos e aplicações são representados, elucidando, por exemplo, a necessidade de gerenciar diferentes instanciações de uma mesma aplicação em um grupo; além disso, este estudo possibilitou uma melhor compreensão do encaixe do FRCP sob o escopo do controlador de experimentos. 
+
+\section{Projeto Final II}
+
+Em resumo, para o segundo período, os objetivo principais s\~ao: continuar o desenvolvimento do módulo Céu de AMQP, implementar o controlador de experimentos OMF em C\'eu, desenvolver uma demonstra\c{c}\~ao interessante para valida\c{c}\~ao do projeto, elimina\c{c}\~ao de \textit{bugs} e refatoramento do c\'odigo onde vantajoso e, por fim, elabora\c{c}\~ao de um detalhado relat\'orio final.
+
+Para a biblioteca Céu de AMQP, faltam as seguintes pendências: automação dos testes de cada módulo; refatoração do módulo de filas para que as mensagens sejam recebidas por clientes da biblioteca através de instanciações de tal módulo; desenvolvimento dos exemplos oficiais utilizando o módulo Céu para facilitar seu aprendizado, focando em explicitar as diferenças de projeto relativas a bibliotecas AMQP escritas em outras linguagens, devido a imposição de conceitos e técnicas de programação estruturada em Céu.
+
+Contudo, o controlador de experimentos OMF em Céu é a prioridade. Primeiramente, será desenvolvido um módulo base que permita a definição das entidades básicas: grupos e aplicações. Para isto, utilizar-se-á a integração de Céu a Lua, possibilitando a definição de tabelas para especificação das entidades. Estendendo-se este módulo base, serão implementadas as etapas iniciais definidas pelo FRCP, com base no estudo deste realizado ao longo de Projeto Final I, para que se verifique a troca inicial de mensagens ocorrida em um experimento entre um controlador de recursos e o controlador de experimentos OMF em Céu.
+
+Feito isto, há de se estender o controlador de experimentos para aceitar um arquivo Céu mais elaborado que descreva as operações a serem executadas, como, por exemplo, a operação de inicialização das aplicações instanciadas dentro de um grupo. Nesta etapa, há de se implementar uma versão em Céu de exemplos oficiais a fim de se verificar a corretude do módulo desenvolvido.
+
+Por fim, tentar-se-á atacar o problema de integração do controlador de experimentos ao \textit{testbed} CeuNaTerra, pelo menos a nível de estudo. Se possível, sua implementação será planejada e executada ao longo da disciplina de Projeto Final II.
