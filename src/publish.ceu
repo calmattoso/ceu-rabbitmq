@@ -45,17 +45,17 @@ do
     var int ret = 0;
     var _amqp_bytes_t body_bytes = _amqp_cstring_bytes((_char&&)&&body);
     var _amqp_bytes_t routing_key_bytes = _amqp_cstring_bytes((_char&&)&&routing_key);
-// atomic do
-    _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
-                        routing_key_bytes, (_amqp_boolean_t) mandatory,
-                        (_amqp_boolean_t) immediate, &&properties, body_bytes);
-// end
-   _die_on_error(ret, "Failed to publish message.");
+    atomic do
+      ret = _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
+                          routing_key_bytes, (_amqp_boolean_t) mandatory,
+                          (_amqp_boolean_t) immediate, &&properties, body_bytes);
+    end
+    _die_on_error(ret, "Failed to publish message.");
   end
 end
 
 
-#if 0
+#if 1
 // little test
 input void TEST_CLOSE;
 par/or do
@@ -79,7 +79,7 @@ par/or do
     watching ch do
       var Exchange amq_direct with
         this.channel = &ch;
-        this.name = [].."amq.direct";
+        this.name = [].."";
         this.type = [].."direct";
         this.passive = false;
         this.durable = true;
@@ -98,7 +98,7 @@ par/or do
         do Publish with
           this.channel = &ch;
           this.exchange = &amq_direct;
-          this.routing_key = [].."test";
+          this.routing_key = [].."hello";
           this.body = [].."Hello, from Ceu!";
           this.mandatory = false;
           this.immediate = false;
@@ -111,6 +111,7 @@ par/or do
     end
   end
 with
+  await 1s;
   async do
     emit TEST_CLOSE;
   end
