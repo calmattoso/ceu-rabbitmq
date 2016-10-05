@@ -1,0 +1,165 @@
+\documentclass[graduacao,brazil]{ThesisPUC}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\Rset}{\mathbb{R}}
+\newcommand{\Zset}{\mathbb{Z}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\autor{Carlos Mattoso}
+\autorR{Mattoso, Carlos}
+\orientador{Noemi Rodriguez}
+\orientadorR{Rodriguez, Noemi}
+
+\titulo{Desenvolvimento de Controlador de Experimentos OMF em C\'{e}u}
+\titulouk{Development of OMF Experiment Controller in C\'{e}u}
+
+\subtitulo{}
+\dia{21} \mes{Junho} \ano{2016}
+
+\cidade{Rio de Janeiro}
+\CDD{510}
+\departamento{Inform\'atica}
+\programa{Engenharia de Computa\c{c}\~{a}o}
+\centro{Centro T\'{e}cnico Cient\'{i}fico}
+\universidade{Pontif\'{i}cia Universidade Cat\'{o}lica do Rio de Janeiro}
+\uni{PUC--Rio}
+\course{Bachalerado em Engenharia de Computa\c{c}\~{a}o}
+\diploma{Bacharel em Engenharia de Computa\c{c}\~{a}o}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Não precisa preencher se for um Projeto Final %
+%
+\banca{
+  \membrodabanca{Luis Carlos Pacheco R. Velho}{IMPA}
+  \membrodabanca{Jorge Stolfi}{UNICAMP}
+  \coordenador{Ney Augusto Dumont}
+}
+%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Não precisa preencher se for um Projeto Final %
+%
+\curriculo{%
+Graduou--se em Engenharia na Ecole Polytechnique (Paris, Fran\c{c}a), cursando \'{A}lgebra e Inform\'{a}tica, assim como F\'{i}sica Te\'{o}rica. Especializou--se na Ecole Sup\'{e}rieure des T\'{e}l\'{e}communications (Paris, Fran\c{c}a) em Processamento de Sinais de Voz e Imagens, assim como Organiza\c{c}\~{a}o e Planejamento. Trabalhou junto com a empresa Inventel em sistemas de telecomunica\c{c}\~{o}es sem fil baseados na tecnologia BlueTooth. Desenvolveu junto com os seus orientadores durante o Mestrado ferramentas de topologia computacional.}%
+%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \epigrafe{%
+% Lorem ipsum.
+% }
+% \epigrafeautor{Wassily Kandinsky}
+% \epigrafelivro{Regarde}
+\renewcommand{\epigrafe}{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% %
+% \agradecimentos{%
+% Aos meus orientadores Professores H\'{e}lio Lopes e Geovan Tavares pelo apoio, simpatia de sempre, e incentivo para a realiza\c{c}\~{a}o deste trabalho
+
+% Ao CNPq e \`{a} PUC--Rio, pelos aux\'{i}lios concedidos, sem os quais este trabalho n\~{a}o poderia ter sido realizado.
+
+% \`{A}s minhas av\'{o}s, que sofreram o mais pela saudade devida a minha expatria\c{c}\~{a}o. Aos meus pais, irm\~{a}s e fam\'{i}lia.
+
+% Aos meus colegas da PUC--Rio, quem me fizeram adorar esse lugar.
+
+% Aos professores Marcos da Silvera, Jean--Marie Nicolas e Anne Germa que me ofereceram a oportunidade desta coopera\c{c}\~{a}o.
+
+% Ao pessoal do departamento de Matem\'{a}tica para a ajuda de todos os dias, em particular \`{a} Ana Cristina, Creuza e ao Sinesio.
+% }%
+%
+%\renewcommand{\acknowledgment}{}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chaves{%
+  \chave{Ambientes de experimentação em rede}%
+  \chave{Programação orientada a eventos}%
+  \chave{Passagem de mensagens por filas}
+}
+
+\resumo{
+Neste trabalho será implementado um controlador de experimentos OMF na linguagem de programação Céu que possibilite o uso dos construtos nativos da linguagem para tratamento de eventos na descrição de experimentos destinados a ambientes de experimentação em rede. Um sub-produto deste trabalho será um \textit{binding} em Céu para uma biblioteca de AMQP escrita na linguagem de programação C, que concilie as propriedades e métodos desta biblioteca ao paradigma de programação reativa e estruturada de Céu.
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chavesuk{
+  \chave{Networking Testbeds}%
+  \chave{Event-oriented Programming}%
+  \chave{Message Queuing}
+}
+
+\resumouk{%
+In this project an OMF experiment controller will be implemented in the Céu programming language to enable the use of the languages's native event handling constructs for the description of experiments targeting networking testbeds. A byproduct to this work will be a Céu binding to an AMQP library written in C that combines the properties and methods of such library with the structured reactive programming paradigm of Céu. 
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \modotabelas{figtab} % nada, fig, tab ou figtab
+\renewcommand{\modotabelas}{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+\input{Capitulos/Introducao}
+
+\input{Capitulos/EstadoDaArte}
+
+\input{Capitulos/PropostaEObjetivos}
+
+\input{Capitulos/AtividadesRealizadas}
+
+\input{Capitulos/PlanoDeAcao}
+
+\input{Capitulos/Cronogramas}
+
+\arial
+\bibliography{FinalReport}
+\addtocontents{toc}{\setcounter{tocdepth}{-1}}
+\chapter*{Aceita\c{c}\~ao do Relatório de Projeto Final I}
+\addtocontents{toc}{\setcounter{tocdepth}{2}}
+
+\hfill\linebreak[4]
+\hfill\linebreak[4]
+
+\hfill
+\hfill
+\noindent\begin{tabular}{ll}
+\makebox[3.5in]{\hrulefill} & \makebox[1.5in]{\hrulefill}\\
+Assinatura do Aluno & Data\\[8ex]% adds space between the two sets of signatures
+\makebox[3.5in]{\hrulefill} & \makebox[1.5in]{\hrulefill}\\
+Assinatura da Orientadora & Data\\
+\end{tabular}
+
+\normalfont
+%\begin{thenotations}
+% %------------------------------------------------------------------------------%
+% \section*{Simplicial Complex}
+% %------------------------------------------------------------------------------%
+% %
+% \noindent
+% \begin{tabular}{ll}
+% \mathbb{R} & conjunto dos n\'{u}meros reais \\
+% \end{tabular}
+%
+%\end{thenotations}
+%\printindex
+
+%\appendix
+
+%\chapter{Primeiro Ap\^{e}ndice}
+%O primeiro ap\^{e}ndice deve vir ap\'{o}s as refer\^{e}ncias bibliogr\'{a}ficas. Depois que voc\^{e} colocar a diretiva ``{$\backslash$}apendix'', todos os %``{$\backslash$}chapter\{\}'' v\~{a}o gerar ap\^{e}ndices.
+
+\end{document}

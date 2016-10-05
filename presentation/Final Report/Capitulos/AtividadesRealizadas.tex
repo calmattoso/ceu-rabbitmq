@@ -1,0 +1,31 @@
+\chapter{Atividades Realizadas}
+
+\section{Estudos Preliminares}
+
+O aluno tinha prévia experiência com Céu, devido a participação em projeto de pesquisa para desenvolvimento de algoritmos distribuídos destinados a ambiente de redes de sensores sem fio. Contudo, tal pesquisa ocorreu ao longo de 2012 e a linguagem sofreu profundas mudanças desde então. Durante esta pesquisa o aluno também foi exposto ao conceito de \textit{testbeds}, mas não chegou a utilizá-las.
+
+Por outro lado, neste trabalho o aluno foi exposto pela primeira vez aos conceitos, técnicas e ferramentas dos domínios de envio de mensagens por fila em sistemas distribuídos, empregados no AMQP, e orquestragem de ambientes de experimentação, empregados no OMF. 
+
+\section{Estudos Conceituais e da Tecnologia}
+
+Em razão da exposição limitada do aluno aos domínios dos protocolos AMQP e OMF, foi necessário um estudo aprofundado de suas documentações. Neste processo, estudou-se também o servidor \textit{RabbitMQ}, uma instância de um \textit{broker} AMQP, e as implementações oficiais em \textit{Ruby} de um controlador de experimentos OMF e de uma biblioteca para desenvolvimento de controladores de recursos OMF.
+
+Através do estudo do material relacionado, o aluno familiarizou-se com as entidades primitivas de AMQP, aprendeu a forma como são expostas através do \textit{RabbitMQ} e as propriedades deste para ser capaz de ajustar suas configurações a fim de realizar os testes necessários. Por fim, analisou bibliotecas de AMQP em \textit{JavaScript}, \textit{Python} e \textit{C}, a fim de ter uma boa base para projetar e implementar a versão em Céu.
+
+No contexto de OMF, estudou-se a arquitetura de um projeto OMF, a fim de se entender bem o encaixe de cada componente da mesma, focando-se principalmente nos papéis do controlador de experimentos e do servidor de mensagens utilizado para a comunicação entre os controladores de recursos e o controlador de experimentos. Ainda quanto ao processo de comunicação, o aluno dominou os conceitos e regras estipulados pelo FRCP, que dita como a comunicação deve ocorrer.
+
+Por fim, foi necessário ao aluno ler o manual e estudar os tutoriais de Céu, a fim de se refamiliarizar com a linguagem. Neste sentido, também foi importante adaptar-se ao estilo de programação reativa e estruturada imposto por Céu, que difere significativamente de linguagens as quais estava mais acostumado, como \textit{C}, \textit{Java} e \textit{JavaScript}.
+
+\section{Testes e Protótipos para Aprendizado e Demonstração}
+
+O principal desenvolvimento se deu na frente de AMQP. Implementou-se uma versão inicial de uma biblioteca de AMQP em Céu \cite{ceu.rabbitmq}, que disponibiliza módulos equivalentes às entidades primitivas de AMQP além de auxiliares para certas operações, como o envio de mensagens. Para cada módulo desenvolveram-se testes simples que validam sua funcionalidade. Por fim, implementaram-se dois exemplos empregando-se todos os módulos, a fim de se realizar um teste de integração completo. Em um exemplo enviou-se uma mensagem para um consumidor de mensagens desenvolvido na biblioteca de \textit{Python}. No outro fez-se o caminho contrário: recebeu-se uma mensagem de um publicador escrito em \textit{Python}. Assim, a elaboração desta biblioteca seguindo boas práticas de Céu comprovou a viabilidade da linguagem para sua aplicação sob este domínio.
+
+Sob o escopo de OMF, além dos estudos realizados, executou-se um experimento simples sobre um controlador de recursos simulado utilizando-se a implementação em \textit{Ruby} de um controlador de experimentos. Este teste possibilitou ao aluno aprender o funcionamento da ferramenta, observar o fluxo da execução de um experimento e compreender a troca de mensagens que ocorre entre os dois pontos ao longo deste processo. 
+
+\section{Método}
+
+O desenvolvimento de cada parte do projeto, isto é, os componentes AMQP e OMF, se deu em duas etapas: primeramente, um estudo do problema a ser atacado e, posteriormente, a implementação da solução. 
+
+O estudo dos conceitos, técnicas e ferramentas dos domínios de AMQP e OMF foi feito de forma bastante aprofundada, tendo sido os pontos mais relevantes documentados e apresentados para a orientadora. Os resumos da documentação foram cuidadosamente registrados para servirem de material de referência durante o desenvolvimento dos códigos do projeto.
+
+O desenvolvimento dos códigos foi um processo bastante iterativo. Conforme os módulos foram desenvolvidos, consultou-se o autor da linguagem Céu para sua análise e crítica, com base na qual os módulos passaram pela refatoração necessária. Deste modo, foi possível o desenvolvimento de módulos fiéis ao paradigma de programação reativa e estruturada imposto pela linguagem e nos quais empregam-se as funcionalidades mais recentes de Céu, servindo assim também de um teste para as mesmas.
