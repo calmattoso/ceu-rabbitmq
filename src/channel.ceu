@@ -62,9 +62,9 @@ par/or do
     this.password = [] .. "guest";
   end;
 
-
-//pool Channel[5] chs; //segfault
   watching c do
+    pool Channel[5] chs; //segfault
+
     #if 1  
     var Channel ch with
       this.conn = &c;
@@ -77,7 +77,7 @@ par/or do
     _printf("Channel ID: %d\n", ch2.id);
     #endif
 
-    #if 0
+    #if 1
     // Segfault:
     // =========
     loop i in 5 do
