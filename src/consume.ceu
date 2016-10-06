@@ -7,10 +7,42 @@
 #include "exchange.ceu"
 #include "queue.ceu"
 
+native @nohold _amqp_dump;
+native @nohold  _amqp_destroy_envelope; // immediately destroys the internal message buffer
+
+class Handler with
+  var _amqp_envelope_t message;
+do
+  [[ print('antes', @((int)message.message.body.len)) ]];
+  await 1s;
+  _amqp_dump(message.message.body.bytes, message.message.body.len);
+  [[ print 'depois' ]];
+
+  [[ dofile 't.lua' ]];
+  var int len = [[ #T ]];
+  loop i in len do
+    [[ print(T[@i+1]) ]];
+  end
+  [[ print(T.id) ]];
+end
+
+class LowHandler with
+  var _amqp_envelope_t message;
+do
+  finalize with
+    _amqp_destroy_envelope(&&message);
+    _printf("fin\n");
+  end
+  do Handler with
+    this.message = message;
+  end;
+end
+
 class Consume with
   event void consume;
   event _amqp_envelope_t receive;
 input:
+  pool LowHandler[]& handlers;
   var Channel& channel;
   var Queue& queue;
   var bool no_local;
@@ -41,8 +73,6 @@ do
   native @pure    _amqp_basic_consume;
   native @pure    _amqp_consume_message;
   native @pure    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
-  native @pure    _amqp_dump;
-  native @nohold  _amqp_destroy_envelope; // immediately destroys the internal message buffer
   native @nohold  _amqp_get_rpc_reply;
   native @nohold  _stringify_bytes;
 
@@ -67,24 +97,26 @@ do
 
   //loop do   
     // Get messages from queue we're listening to.
-    //async/thread (channel, message) do
+    async/thread (channel, message) do
         // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
         //                      struct timeval *timeout, AMQP_UNUSED int flags)
-        _amqp_consume_message(&&this.channel.conn.state, &&message, _NULL, 0);
-    //end
-    _amqp_dump(message.message.body.bytes, message.message.body.len);
+        _amqp_consume_message(&&channel.conn.state, &&message, null, 0);
+    end
+    spawn LowHandler in handlers with
+        this.message = message;
+    end;
+    //_amqp_dump(message.message.body.bytes, message.message.body.len);
     // check if the consume call was successful
     //if _AMQP_RESPONSE_NORMAL != _res.reply_type then
     //  break;
     //end
     
     //emit this.receive => message;
-    _amqp_destroy_envelope(&&message);
+    //_amqp_destroy_envelope(&&message);
   //end
 end
 
-
-#if 0
+#if 1
 // little test
   var Connection c with
     this.hostname = [] .. "localhost";
@@ -127,18 +159,20 @@ end
       end;
       _printf("Using default direct exchange 'amq.direct'.\n");
 
-			var Q2X_Bind bind with
+      var Q2X_Bind bind with
         this.channel  = &ch;
-				this.queue    = &q;
-				this.exchange = &amq_direct;
+		this.queue    = &q;
+        this.exchange = &amq_direct;
         this.binding_key = [].."test";
         this.arguments = _amqp_empty_table;
-			end;
+      end;
       _printf("Successfully bound Queue to Exchange.\n");
 
+      pool LowHandler[] hs;
       //watching (q, amq_direct, bind) do
         loop do
           var Consume com with
+            this.handlers = &hs;
             this.channel = &ch;
             this.queue = &q;
             this.no_local = false;
@@ -146,6 +180,7 @@ end
             this.exclusive = false;
             this.arguments = _amqp_empty_table;
           end;
+          await com;
 
           /*par/and do
             var _amqp_envelope_t msg = await com.receive;
