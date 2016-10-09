@@ -6,7 +6,7 @@ all:
 connection:
 	ceu --pre --pre-args="-I$(CEU_DIR)/include -I$(CEU_UV_DIR)/include" \
 	          --pre-input=src/connection.ceu                            \
-	    --ceu                                                           \
+	    --ceu --ceu-err-unused=pass --ceu-err-uninitialized=pass        \
 	    --env --env-types=$(CEU_DIR)/env/types.h                        \
 	          --env-threads=$(CEU_UV_DIR)/env/threads.h                 \
 	          --env-main=$(CEU_DIR)/env/main.c                          \
