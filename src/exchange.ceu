@@ -66,6 +66,25 @@ do
   await FOREVER;
 end
 
+class Exchange_AMQ_Direct with
+  var Channel& channel;
+output:
+  var Exchange& exchange;
+do
+  var Exchange amq_direct with
+    this.channel = &channel;
+    this.name = [].."amq.direct";
+    this.type = [].."direct";
+    this.passive = false;
+    this.durable = true;
+    this.auto_delete = false;
+    this.internal = false;
+    this.arguments = _amqp_empty_table;
+  end;
+  exchange = &amq_direct;
+  await FOREVER;
+end
+
 #if 0
 // little test
 input void TEST_CLOSE;
@@ -114,18 +133,12 @@ par/or do
       _printf("Created Exchange 'direct' with name '%s'.\n", 
               _stringify_bytes(e2.name_bytes));
 
-     var Exchange amq_direct with
+      var Exchange_AMQ_Direct e with
         this.channel = &ch;
-        this.name = [].."";
-        this.type = [].."direct";
-        this.passive = false;
-        this.durable = false;
-        this.auto_delete = true;
-        this.internal = false;
-        this.arguments = _amqp_empty_table;
       end;
+      var Exchange& amq_direct = &e.exchange;
       _printf("Using default exchange.\n");
-
+     
       await TEST_CLOSE;
     end
   end
