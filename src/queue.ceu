@@ -5,17 +5,25 @@
 #include "channel.ceu"
 
 class Queue with
-  var Channel& channel;
+  event _amqp_envelope_t receive;
 input:
+  // Creation properties
+  var Channel& channel;
   var char[] name;
   var bool   passive;
   var bool   durable;
   var bool   exclusive;
   var bool   auto_delete;
-  
-  var _amqp_table_t arguments;
+  var _amqp_table_t create_arguments;
+
+  // Consumption properties
+  var bool no_local;
+  var bool no_ack;
+  var bool consume_exclusive;
+  var _amqp_table_t consume_arguments;
 output:
   var _amqp_bytes_t name_bytes; // export the queue name in the library format
+  var _amqp_bytes_t consumer_tag; // export the consumer tag for listening on this queue
 do
   native/pre do
     ##include <stdlib.h>
@@ -36,13 +44,17 @@ do
   native @plain   _amqp_bytes_t;   // amqp representation for strings; `struct` with inner bytes pointer: https://git.io/vrcWN
   native @plain   _amqp_connection_state_t_;
   native @plain   _amqp_queue_declare_ok_tp;
+  native @plain   _amqp_basic_consume_ok_t;
+  native @pure    _amqp_basic_consume;
   native @nohold  _amqp_get_rpc_reply;
   native @nohold  _amqp_bytes_malloc_dup;
   native @nohold  _stringify_bytes;
   native @nohold  _free;
+  native @nohold  _memcmp;
   native @pure    _amqp_queue_declare;
   native @pure    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
   native @pure    _strlen;
+  native @pure    _strcmp;
 
   // BODY
 
@@ -58,11 +70,11 @@ do
       _amqp_queue_declare(&&channel.conn.state, channel.id, name_bytes, 
                           (_amqp_boolean_t) passive, (_amqp_boolean_t) durable,
                           (_amqp_boolean_t) exclusive, (_amqp_boolean_t) auto_delete,
-                          arguments);
+                          create_arguments);
   _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring queue");
 
   // Get the broker defined queue name, which uniquely identifies the queue
-  if not name_bytes.len then
+  if not _strlen((_char&&)&&name) then
     name_bytes = _amqp_bytes_malloc_dup((*r).queue);
     finalize with
       _amqp_bytes_free(name_bytes);
@@ -72,10 +84,35 @@ do
     end
   end
 
+  // Set consumption on this queue...
+  // amqp_basic_consume_ok_t *
+  // AMQP_CALL amqp_basic_consume(amqp_connection_state_t state, amqp_channel_t channel,
+  //                              amqp_bytes_t queue, amqp_bytes_t consumer_tag, 
+  //                              amqp_boolean_t no_local, amqp_boolean_t no_ack,
+  //                              amqp_boolean_t exclusive, amqp_table_t arguments)
+  var _amqp_basic_consume_ok_t&& consume_ok_r = _amqp_basic_consume(
+        &&channel.conn.state, 
+        channel.id,
+        (*r).queue, 
+        _amqp_empty_bytes, 
+        (_amqp_boolean_t) no_local, 
+        (_amqp_boolean_t) no_ack, 
+        (_amqp_boolean_t) consume_exclusive, 
+        consume_arguments);
+  _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Failed to put channel in consume mode.");
+
+  consumer_tag = _amqp_bytes_malloc_dup((*consume_ok_r).consumer_tag);
+  finalize with
+    _amqp_bytes_free(consumer_tag);
+  end
+  if consumer_tag.bytes == null then
+    _die("Out of memory while copying queue name");
+  end
+
   await FOREVER;
 end
 
-#if 0
+#if 0 
 // little test
 input void TEST_CLOSE;
 par/or do
@@ -99,14 +136,19 @@ par/or do
     watching ch do
       var Queue q with
         this.channel = &ch;
-        this.name = [].."test_queue";
+        this.name = [].."queue";
         this.passive = false;
         this.durable = false;
         this.exclusive = false;
         this.auto_delete = true;
-        this.arguments = _amqp_empty_table;
+        this.create_arguments = _amqp_empty_table;
+
+        this.no_local = false;
+        this.no_ack = true;
+        this.consume_exclusive = false;
+        this.consume_arguments = _amqp_empty_table;
       end;
-      _printf("Created Queue with name '%s'.\n", _stringify_bytes(q.name_bytes));
+      _printf("Created Queue with name '%s' and ctag '%s'.\n", _stringify_bytes(q.name_bytes), _stringify_bytes(q.consumer_tag));
 
       var Queue q2 with
         this.channel = &ch;
@@ -115,9 +157,15 @@ par/or do
         this.durable = false;
         this.exclusive = false;
         this.auto_delete = true;
-        this.arguments = _amqp_empty_table;
+        this.create_arguments = _amqp_empty_table;
+
+        this.no_local = false;
+        this.no_ack = true;
+        this.consume_exclusive = false;
+        this.consume_arguments = _amqp_empty_table;
       end;
-      _printf("Created Queue with name '%s'.\n", _stringify_bytes(q2.name_bytes));
+      _printf("Created Queue with name '%s' and ctag '%s'.\n", _stringify_bytes(q2.name_bytes), _stringify_bytes(q2.consumer_tag));
+
 
       await TEST_CLOSE;
     end
