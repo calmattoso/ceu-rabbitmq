@@ -1,54 +1,33 @@
-#ifndef _PUBLISH_CEU
-#define _PUBLISH_CEU
+#ifndef _CONSUME_CEU
+#define _CONSUME_CEU
 
 #include "connection.ceu"
 #include "channel.ceu"
 #include "q2x_bind.ceu"
 #include "exchange.ceu"
 #include "queue.ceu"
+#include "handler.ceu"
 
-native @nohold _amqp_dump;
-native @nohold  _amqp_destroy_envelope; // immediately destroys the internal message buffer
-
-class Handler with
-  var _amqp_envelope_t message;
-do
-  [[ print('antes', @((int)message.message.body.len)) ]];
-  await 1s;
-  _amqp_dump(message.message.body.bytes, message.message.body.len);
-  [[ print 'depois' ]];
-
-  [[ dofile 't.lua' ]];
-  var int len = [[ #T ]];
-  loop i in len do
-    [[ print(T[@i+1]) ]];
-  end
-  [[ print(T.id) ]];
-end
+native @nohold _amqp_destroy_envelope; // immediately destroys the internal message buffer
 
 class LowHandler with
   var _amqp_envelope_t message;
+  pool Queue[]& queues;
 do
   finalize with
     _amqp_destroy_envelope(&&message);
-    _printf("fin\n");
   end
   do Handler with
     this.message = message;
+    this.queues  = &queues;
   end;
 end
 
 class Consume with
-  event void consume;
-  event _amqp_envelope_t receive;
 input:
-  pool LowHandler[]& handlers;
   var Channel& channel;
-  var Queue& queue;
-  var bool no_local;
-  var bool no_ack;
-  var bool exclusive;
-  var _amqp_table_t arguments;
+  pool LowHandler[]& handlers;
+  pool Queue[]& queues;
 do
   native/pre do
     ##include <stdlib.h>
@@ -70,82 +49,44 @@ do
   native @plain   _amqp_table_t;   // arguments for method; simple `struct` with inner pointer: https://git.io/vrcW9
   native @plain   _amqp_rpc_reply_t;
   native @plain   _amqp_envelope_t; // message envelope. `struct` with inner pointer
-  native @pure    _amqp_basic_consume;
   native @pure    _amqp_consume_message;
   native @pure    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
   native @nohold  _amqp_get_rpc_reply;
   native @nohold  _stringify_bytes;
-
-  // BODY:
-  // First, set the channel to message consumption mode.
-  // amqp_basic_consume_ok_t *
-  // AMQP_CALL amqp_basic_consume(amqp_connection_state_t state, amqp_channel_t channel,
-  //                              amqp_bytes_t queue, amqp_bytes_t consumer_tag, 
-  //                              amqp_boolean_t no_local, amqp_boolean_t no_ack,
-  //                              amqp_boolean_t exclusive, amqp_table_t arguments)
-  _amqp_basic_consume(&&channel.conn.state, channel.id, queue.name_bytes, 
-                     _amqp_empty_bytes, (_amqp_boolean_t) no_local, 
-                     (_amqp_boolean_t) no_ack, (_amqp_boolean_t) exclusive, 
-                     arguments);
-  _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Failed to put channel in consume mode.");
-
-  var _amqp_rpc_reply_t res = _amqp_rpc_reply_t();
-  var _amqp_envelope_t  message = _amqp_envelope_t();
+  native @nohold  _strcmp;
 
   //await this.consume;
   _printf("Consuming...\n");
 
-  //loop do   
+  loop do   
+    var _amqp_envelope_t  message = _amqp_envelope_t();
+
     // Get messages from queue we're listening to.
     async/thread (channel, message) do
         // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
         //                      struct timeval *timeout, AMQP_UNUSED int flags)
         _amqp_consume_message(&&channel.conn.state, &&message, null, 0);
     end
+    _printf("Received messaged with ctag %s\n", _stringify_bytes(message.consumer_tag));
+
     spawn LowHandler in handlers with
-        this.message = message;
+      this.message = message;
+      this.queues  = &queues; 
     end;
-    //_amqp_dump(message.message.body.bytes, message.message.body.len);
-    // check if the consume call was successful
-    //if _AMQP_RESPONSE_NORMAL != _res.reply_type then
-    //  break;
-    //end
-    
-    //emit this.receive => message;
-    //_amqp_destroy_envelope(&&message);
-  //end
+  end
 end
 
 #if 1
 // little test
-  var Connection c with
-    this.hostname = [] .. "localhost";
-    this.port = 5672;
-    this.vhost = [] .. "/";
-    this.channel_max = 0;
-    this.frame_max = 131072;
-    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-    this.user = [] .. "guest";
-    this.password = [] .. "guest";
-  end;
-
-  watching c do
+  watching default_connection do
     var Channel ch with
-      this.conn = &c;
+      this.conn = &default_connection;
     end;
     _printf("Channel ID: %d\n", ch.id);
 
     watching ch do
-      var Queue q with
-        this.channel = &ch;
-        this.name = [].."test_queue";
-        this.passive = false;
-        this.durable = false;
-        this.exclusive = false;
-        this.auto_delete = true;
-        this.arguments = _amqp_empty_table;
-      end;
-      _printf("Created Queue with name '%s'.\n", _stringify_bytes(q.name_bytes));
+      pool Queue[] qs;
+      pool LowHandler[] hs;
 
       var Exchange amq_direct with
         this.channel = &ch;
@@ -159,40 +100,59 @@ end
       end;
       _printf("Using default direct exchange 'amq.direct'.\n");
 
-      var Q2X_Bind bind with
+      var Queue&&? q1 = spawn Queue in qs with
+        this.channel = &ch;
+        this.name = [].."queue";
+        this.passive = false;
+        this.durable = false;
+        this.exclusive = false;
+        this.auto_delete = true;
+        this.create_arguments = _amqp_empty_table;
+
+        this.no_local = false;
+        this.no_ack = true;
+        this.consume_exclusive = false;
+        this.consume_arguments = _amqp_empty_table;
+      end;
+
+      var Queue&&? q2 = spawn Queue in qs with
+        this.channel = &ch;
+        this.name = [].."queue2";
+        this.passive = false;
+        this.durable = false;
+        this.exclusive = false;
+        this.auto_delete = true;
+        this.create_arguments = _amqp_empty_table;
+
+        this.no_local = false;
+        this.no_ack = true;
+        this.consume_exclusive = false;
+        this.consume_arguments = _amqp_empty_table;
+      end;
+
+      var Q2X_Bind q2x_b1 with
         this.channel  = &ch;
-		this.queue    = &q;
+		    this.queue    = q1!;
         this.exchange = &amq_direct;
-        this.binding_key = [].."test";
+        this.binding_key = [].."test1";
         this.arguments = _amqp_empty_table;
       end;
-      _printf("Successfully bound Queue to Exchange.\n");
 
-      pool LowHandler[] hs;
-      //watching (q, amq_direct, bind) do
-        loop do
-          var Consume com with
-            this.handlers = &hs;
-            this.channel = &ch;
-            this.queue = &q;
-            this.no_local = false;
-            this.no_ack = true;
-            this.exclusive = false;
-            this.arguments = _amqp_empty_table;
-          end;
-          await com;
+      var Q2X_Bind q2x_b2 with
+        this.channel  = &ch;
+		    this.queue    = q2!;
+        this.exchange = &amq_direct;
+        this.binding_key = [].."test2";
+        this.arguments = _amqp_empty_table;
+      end;  
 
-          /*par/and do
-            var _amqp_envelope_t msg = await com.receive;
-            _printf("Received message!\n");
-            _amqp_dump(msg.message.body.bytes, msg.message.body.len);
-            _printf("1");
-          with
-             _printf("2");
-            emit com.consume; 
-          end*/
-        end
-      //end
+      var Consume com with
+        this.channel  = &ch;
+        this.handlers = &hs;
+        this.queues   = &qs;
+      end;
+
+      await com;
     end
   end
 

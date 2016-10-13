@@ -7,7 +7,7 @@
 
 class Q2X_Bind with
   var Channel&  channel;
-  var Queue&    queue;
+  var Queue&&   queue;
   var Exchange& exchange;
 	var char[]    binding_key;
   var _amqp_table_t arguments;
@@ -39,7 +39,7 @@ do
 	// amqp_queue_bind(amqp_connection_state_t state, amqp_channel_t channel, 
   //                 amqp_bytes_t queue, amqp_bytes_t exchange, 
   //                 amqp_bytes_t routing_key, amqp_table_t arguments)
-	_amqp_queue_bind(&&channel.conn.state, channel.id, queue.name_bytes,
+	_amqp_queue_bind(&&channel.conn.state, channel.id, queue:name_bytes,
 									 exchange.name_bytes, binding_key_bytes, arguments);
   _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Binding queue to exchange.");						 
 	
@@ -50,20 +50,9 @@ end
 // little test
 input void TEST_CLOSE;
 par/or do
-  var Connection c with
-    this.hostname = [] .. "localhost";
-    this.port = 5672;
-    this.vhost = [] .. "/";
-    this.channel_max = 0;
-    this.frame_max = 131072;
-    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-    this.user = [] .. "guest";
-    this.password = [] .. "guest";
-  end;
-
-  watching c do
+  watching default_connection do
     var Channel ch with
-      this.conn = &c;
+      this.conn = &default_connection;
     end;
     _printf("Channel ID: %d\n", ch.id);
 
@@ -75,7 +64,12 @@ par/or do
         this.durable = false;
         this.exclusive = false;
         this.auto_delete = true;
-        this.arguments = _amqp_empty_table;
+        this.create_arguments = _amqp_empty_table;
+
+        this.no_local = false;
+        this.no_ack = true;
+        this.consume_exclusive = false;
+        this.consume_arguments = _amqp_empty_table;
       end;
       _printf("Created Queue with name '%s'.\n", _stringify_bytes(q.name_bytes));
 
@@ -94,11 +88,11 @@ par/or do
       
 			var Q2X_Bind bind with
         this.channel  = &ch;
-				this.queue    = &q;
-				this.exchange = &amq_direct;
+        this.queue    = &&q;
+        this.exchange = &amq_direct;
         this.binding_key = [].."baloney";
         this.arguments = _amqp_empty_table;
-			end;
+      end;
       _printf("Successfully bound Queue to Exchange.\n");
 
       await TEST_CLOSE;
