@@ -29,21 +29,14 @@ do
 
   // protected variables
   this.id = conn.next_channel_id();
-  conn.inc_channel_id();
 
   // body
-    _amqp_channel_open(&&conn.state, id);
+  _amqp_channel_open(&&conn.state, id);
 
-  // this.conn.open_channel(&this);
-  ///finalize with
-    // this.conn.close_channel(&this);
-
-    _die_on_amqp_error(_amqp_get_rpc_reply(&&conn.state), "Opening channel");
-    _printf("Opened channel!\n");
-    finalize with
-      _die_on_amqp_error(_amqp_channel_close(&&conn.state, id, _AMQP_REPLY_SUCCESS), "Closing channel");
-      _printf("Closed channel!\n");
-    end
+  _die_on_amqp_error(_amqp_get_rpc_reply(&&conn.state), "Opening channel");
+  finalize with
+    _die_on_amqp_error(_amqp_channel_close(&&conn.state, id, _AMQP_REPLY_SUCCESS), "Closing channel");
+  end
   await FOREVER;
 end
 

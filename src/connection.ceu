@@ -15,7 +15,6 @@ output:
   var _amqp_connection_state_t_& state;
 
   function (void)=>int next_channel_id;
-  function (void)=>int inc_channel_id;
 do
   native/pre do
     ##include <stdlib.h>
@@ -46,15 +45,12 @@ do
 
   // protected variables
   var _amqp_connection_state_t_&? conn;
-  var int channel_id = 1;
+  var int channel_id = 0;
 
   // methods
   function (void)=>int next_channel_id do
-    return channel_id; 
-  end
-  
-  function (void)=>int inc_channel_id do
     channel_id = channel_id + 1;
+    return channel_id; 
   end
 
   // body
@@ -90,6 +86,17 @@ do
 
   await FOREVER;
 end
+
+var Connection default_connection with
+  this.hostname = [] .. "localhost";
+  this.port = 5672;
+  this.vhost = [] .. "/";
+  this.channel_max = 0;
+  this.frame_max = 131072;
+  this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
+  this.user = [] .. "guest";
+  this.password = [] .. "guest";
+end;
 
 #if 0
 // little test
