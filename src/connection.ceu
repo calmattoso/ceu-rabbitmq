@@ -50,9 +50,9 @@ code/await Connection (var _plain_string hostname,
                        var int           sasl_method,
                        var _plain_string user,
                        var _plain_string password)
-                            => (var& _amqp_connection_state_t_ conn,
+                            -> (var& _amqp_connection_state_t_ conn,
                                 var& int channel_id)
-                                => void
+                                -> void
 do
     var&? _amqp_connection_state_t_ conn_;
     do
