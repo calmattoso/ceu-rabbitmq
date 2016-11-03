@@ -1,120 +1,95 @@
 #ifndef _PUBLISH_CEU
 #define _PUBLISH_CEU
 
+#include <c.ceu>
+#include <uv/uv.ceu>
+
+#include "amqp_base.ceu"
 #include "connection.ceu"
 #include "channel.ceu"
 #include "exchange.ceu"
 
-class Publish with
-input:
-  var Channel& channel;
-  var Exchange& exchange;
-  var char[] routing_key;
-  var char[] body;
-  var bool mandatory;
-  var bool immediate;
-  var _amqp_basic_properties_t properties;
-do
-  native/pre do
-    ##include <stdlib.h>
-    ##include <stdio.h>
-    ##include <string.h>
-    ##include <stdint.h>
-    
-    ##include <amqp_tcp_socket.h>
-    ##include <amqp.h>
-    ##include <amqp_framing.h>
+native/pure
+    _new_props,
+;
 
-    ##include "utils.c"
-  end
+native/plain
+    _AMQP_BASIC_CONTENT_TYPE_FLAG,
+    _AMQP_BASIC_DELIVERY_MODE_FLAG,
+;
 
-  // prototype hacks
-  native @plain   _amqp_boolean_t; // this is an `int`
-  native @plain   _amqp_basic_properties_t;   // properties for basic methods
-  native @plain   _amqp_bytes_t;   // amqp representation for strings; `struct` with inner bytes pointer: https://git.io/vrcWN
-  native @pure    _amqp_basic_publish;
-  native @pure    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
+native/nohold
+    _amqp_basic_publish,
+;
 
-  // BODY: just shoots a message to the broker
-  // int amqp_basic_publish(amqp_connection_state_t state, amqp_channel_t channel,
-  //                        amqp_bytes_t exchange, amqp_bytes_t routing_key,
-  //                        amqp_boolean_t mandatory, amqp_boolean_t immediate,
-  //                        struct amqp_basic_properties_t_ const *properties,
-  //                        amqp_bytes_t body)
-  async/thread (channel,exchange,body,routing_key,mandatory,immediate,properties) do
-    var int ret = 0;
-    var _amqp_bytes_t body_bytes = _amqp_cstring_bytes((_char&&)&&body);
-    var _amqp_bytes_t routing_key_bytes = _amqp_cstring_bytes((_char&&)&&routing_key);
-    atomic do
-      ret = _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
-                          routing_key_bytes, (_amqp_boolean_t) mandatory,
-                          (_amqp_boolean_t) immediate, &&properties, body_bytes);
-    end
-    _die_on_error(ret, "Failed to publish message.");
-  end
+native/pre do
+    amqp_basic_properties_t new_props() {
+        amqp_basic_properties_t props;
+
+        return props;
+    }
 end
 
+var _amqp_basic_properties_t default_props = _new_props();
+default_props.__flags = _AMQP_BASIC_CONTENT_TYPE_FLAG | _AMQP_BASIC_DELIVERY_MODE_FLAG;
+default_props.content_type = _amqp_cstring_bytes("text/plain");
+default_props.delivery_mode = 2;
 
-#if 1
-// little test
-input void TEST_CLOSE;
-par/or do
-  var Connection c with
-    this.hostname = [] .. "localhost";
-    this.port = 5672;
-    this.vhost = [] .. "/";
-    this.channel_max = 0;
-    this.frame_max = 131072;
-    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-    this.user = [] .. "guest";
-    this.password = [] .. "guest";
-  end;
+data PublishContext with
+    var  _plain_string            routing_key;
+    var  _plain_string            body;
+    var  bool                     mandatory  = false;
+    var  bool                     immediate  = false;
+    var  _amqp_basic_properties_t properties;
+end
 
-  watching c do
-    var Channel ch with
-      this.conn = &c;
-    end;
-    _printf("Channel ID: %d\n", ch.id);
+code/await Publish (var& Channel channel, var& Exchange exchange, 
+                    var PublishContext ctx) 
+                        -> void
+do
+    // BODY: just shoots a message to the broker
+    // int amqp_basic_publish(amqp_connection_state_t state, amqp_channel_t channel,
+    //                        amqp_bytes_t exchange, amqp_bytes_t routing_key,
+    //                        amqp_boolean_t mandatory, amqp_boolean_t immediate,
+    //                        struct amqp_basic_properties_t_ const *properties,
+    //                        amqp_bytes_t body)
+    await async/thread (channel, exchange, ctx) do
+        var int ret = 0;
 
-    watching ch do
-      var Exchange amq_direct with
-        this.channel = &ch;
-        this.name = [].."";
-        this.type = [].."direct";
-        this.passive = false;
-        this.durable = true;
-        this.auto_delete = false;
-        this.internal = false;
-        this.arguments = _amqp_empty_table;
-      end;
-      _printf("Using default 'amq.direct' exchange.\n");
-
-      watching amq_direct do
-        var _amqp_basic_properties_t props = _amqp_basic_properties_t();
-        props._flags = _AMQP_BASIC_CONTENT_TYPE_FLAG | 
-                       _AMQP_BASIC_DELIVERY_MODE_FLAG;
-        props.content_type = _amqp_cstring_bytes("text/plain");
-        props.delivery_mode = 2; /* persistent delivery mode */        
-        do Publish with
-          this.channel = &ch;
-          this.exchange = &amq_direct;
-          this.routing_key = [].."hello";
-          this.body = [].."Hello, from Ceu!";
-          this.mandatory = false;
-          this.immediate = false;
-          this.properties = props;
-        end;
+        var _amqp_bytes_t body_bytes        = _amqp_cstring_bytes(ctx.body),
+                          routing_key_bytes = _amqp_cstring_bytes(ctx.routing_key);
+    
+        atomic do
+            ret = _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
+                                      routing_key_bytes, ctx.mandatory as _amqp_boolean_t,
+                                      ctx.immediate as _amqp_boolean_t, &&ctx.properties, body_bytes);
+        end
+        _die_on_error(ret, "Failed to publish message.");
+#ifdef DEBUG
         _printf("Published message!\n");
-      end
-
-      await TEST_CLOSE;
+#endif
     end
-  end
-with
-  await 1s;
-  async do
-    emit TEST_CLOSE;
-  end
+end
+
+#ifdef publish_test
+// little test
+var& Connection conn;
+event& void conn_ok;
+
+spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
+await conn_ok;
+
+var& Channel channel;
+spawn New_Channel(&conn) -> (&channel);       
+
+par/or do
+    every 500ms do
+        spawn Publish(&channel, &amq_direct, 
+                      PublishContext("hello", "Hello from Ceu!",
+                                     _,_,default_props));
+    end
+with    
+    await (2.1)s;
 end
 
 escape 0;
