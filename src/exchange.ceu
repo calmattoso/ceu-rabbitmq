@@ -1,139 +1,118 @@
 #ifndef _EXCHANGE_CEU
 #define _EXCHANGE_CEU
 
+#include <c.ceu>
+#include <uv/uv.ceu>
+
+#include "amqp_base.ceu"
 #include "connection.ceu"
 #include "channel.ceu"
 
-class Exchange with
-  var Channel& channel;
-input:
-  var char[] name;
-  var char[] type;
-  var bool   passive;
-  var bool   durable;
-  var bool   auto_delete;
-  var bool   internal;
+#define AMQ_DEFAULT_TYPE "direct"
 
-  var _amqp_table_t arguments;
-output:
-  var _amqp_bytes_t name_bytes; // export the exchange name in the library format
+#define AMQ_DEFAULT ""
+#define AMQ_DIRECT  "amq.direct"
+#define AMQ_TOPIC   "amq.topic"
+#define AMQ_FANOUT  "amq.fanout"
+#define AMQ_HEADERS "amq.headers"
+
+native/nohold
+    _amqp_exchange_declare,
+;
+
+data Exchange with
+    var _amqp_bytes_t name_bytes;
+end
+
+data ExchangeContext with
+    var _plain_string name;
+    var _plain_string type        = AMQ_DEFAULT_TYPE;
+    var bool          passive     = false;
+    var bool          durable     = false;
+    var bool          auto_delete = true;
+    var bool          internal    = false;
+    var _amqp_table_t arguments   = _amqp_empty_table;
+end
+
+code/await New_Exchange (var& Channel channel, var ExchangeContext ctx)
+                            -> (var& Exchange ex)
+                                -> FOREVER
 do
-  native/pre do
-    ##include <stdlib.h>
-    ##include <stdio.h>
-    ##include <string.h>
-    ##include <stdint.h>
-    
-    ##include <amqp_tcp_socket.h>
-    ##include <amqp.h>
-    ##include <amqp_framing.h>
-
-    ##include "utils.c"
-  end
-
-  // prototype hacks
-  native @plain   _amqp_boolean_t; // this is an `int`
-  native @plain   _amqp_table_t;   // arguments for method; simple `struct` with inner pointer: https://git.io/vrcW9
-  native @plain   _amqp_bytes_t;   // amqp representation for strings; `struct` with inner bytes pointer: https://git.io/vrcWN
-  native @plain   _amqp_connection_state_t_;
-  native @nohold  _amqp_get_rpc_reply;
-  native @nohold  _amqp_bytes_malloc_dup;
-  native @nohold  _stringify_bytes;
-  native @nohold  _free;
-  native @pure    _amqp_exchange_declare;
-  native @pure    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
-  native @pure    _strlen;
-
-  // BODY
-
-  // Convert the exchange name to the expected format, if pre-defined by user
-  name_bytes = _amqp_cstring_bytes((_char&&)&&name); // if empty, uses the default `amq.direct` exchange
-  if name_bytes.len then // if empty, the default exchange is being used and it can't be declared
-    var _amqp_bytes_t type_bytes = _amqp_cstring_bytes((_char&&)&&type);
-
-    // Declare the exchange
-    // amqp_exchange_declare(amqp_connection_state_t state, amqp_channel_t channel,
-    //                       amqp_bytes_t exchange, amqp_bytes_t type, amqp_boolean_t passive,
-    //                       amqp_boolean_t durable, amqp_boolean_t auto_delete, 
-    //                       amqp_boolean_t internal, amqp_table_t arguments);
-    _amqp_exchange_declare(&&channel.conn.state, channel.id, name_bytes, 
-                           type_bytes, (_amqp_boolean_t) passive, 
-                           (_amqp_boolean_t) durable, (_amqp_boolean_t) auto_delete,
-                           (_amqp_boolean_t) internal, arguments);
-    _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring exchange");
-  end
-
-  await FOREVER;
-end
-
-#if 0
-// little test
-input void TEST_CLOSE;
-par/or do
-  var Connection c with
-    this.hostname = [] .. "localhost";
-    this.port = 5672;
-    this.vhost = [] .. "/";
-    this.channel_max = 0;
-    this.frame_max = 131072;
-    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-    this.user = [] .. "guest";
-    this.password = [] .. "guest";
-  end;
-
-  watching c do
-    var Channel ch with
-      this.conn = &c;
-    end;
-    _printf("Channel ID: %d\n", ch.id);
-
-    watching ch do
-      var Exchange e with
-        this.channel = &ch;
-        this.name = [].."test_exchange_topic";
-        this.type = [].."topic";
-        this.passive = false;
-        this.durable = false;
-        this.auto_delete = true;
-        this.internal = false;
-        this.arguments = _amqp_empty_table;
-      end;
-      _printf("Created Exchange 'topic' with name '%s'.\n", 
-              _stringify_bytes(e.name_bytes));
-
-      var Exchange e2 with
-        this.channel = &ch;
-        this.name = [].."test_exchange_direct";
-        this.type = [].."direct";
-        this.passive = false;
-        this.durable = false;
-        this.auto_delete = true;
-        this.internal = false;
-        this.arguments = _amqp_empty_table;
-      end;
-      _printf("Created Exchange 'direct' with name '%s'.\n", 
-              _stringify_bytes(e2.name_bytes));
-
-     var Exchange amq_direct with
-        this.channel = &ch;
-        this.name = [].."";
-        this.type = [].."direct";
-        this.passive = false;
-        this.durable = false;
-        this.auto_delete = true;
-        this.internal = false;
-        this.arguments = _amqp_empty_table;
-      end;
-      _printf("Using default exchange.\n");
-
-      await TEST_CLOSE;
+    // Convert the exchange name to the expected format, if pre-defined by user
+    var _amqp_bytes_t name_bytes;
+    if ctx.name != null then
+       name_bytes = _amqp_cstring_bytes(ctx.name); // if empty, uses the default `amq.direct` exchange
+    else
+       name_bytes = _amqp_cstring_bytes(AMQ_DEFAULT);
     end
-  end
-with
-  async do
-    emit TEST_CLOSE;
-  end
+
+    // Export the exchange
+    var Exchange ex_ = val Exchange(name_bytes);
+    ex = &ex_;
+
+    // If a default exchange is to be used, do not make a declare request
+    if name_bytes.len > 0 // default
+       and _strcmp(ctx.name, AMQ_DIRECT)  != 0
+       and _strcmp(ctx.name, AMQ_TOPIC)   != 0
+       and _strcmp(ctx.name, AMQ_FANOUT)  != 0
+       and _strcmp(ctx.name, AMQ_HEADERS) != 0 then
+        var _amqp_bytes_t type_bytes;
+        if ctx.type != null then
+            type_bytes = _amqp_cstring_bytes(ctx.type);
+        else
+            type_bytes = _amqp_cstring_bytes(AMQ_DEFAULT_TYPE);
+        end
+
+        // Declare the exchange
+        // amqp_exchange_declare(amqp_connection_state_t state, amqp_channel_t channel,
+        //                       amqp_bytes_t exchange, amqp_bytes_t type, amqp_boolean_t passive,
+        //                       amqp_boolean_t durable, amqp_boolean_t auto_delete, 
+        //                       amqp_boolean_t internal, amqp_table_t arguments);
+        _amqp_exchange_declare(&&channel.conn.state, channel.id, name_bytes, 
+                               type_bytes, ctx.passive as _amqp_boolean_t, 
+                               ctx.durable as _amqp_boolean_t, ctx.auto_delete as _amqp_boolean_t,
+                               ctx.internal as _amqp_boolean_t, ctx.arguments);
+        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring exchange");
+#ifdef DEBUG
+        _printf("Declared exchange of type `%s` with name `%s`.\n", ctx.type, ctx.name);
+    else
+        _printf("Using default exchange `%s`.\n", _stringify_bytes(name_bytes));
+#endif
+    end
+
+    await FOREVER;
 end
+
+// All new default exchanges! Save time and money by using these.
+var Exchange amq_default = val Exchange(_amqp_cstring_bytes(AMQ_DEFAULT)),
+             amq_direct  = val Exchange(_amqp_cstring_bytes(AMQ_DIRECT)),
+             amq_topic   = val Exchange(_amqp_cstring_bytes(AMQ_TOPIC)),
+             amq_fanout  = val Exchange(_amqp_cstring_bytes(AMQ_FANOUT)),
+             amq_headers = val Exchange(_amqp_cstring_bytes(AMQ_HEADERS));
+
+#ifdef exchange_test
+var& Connection conn;
+event& void conn_ok;
+
+spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
+await conn_ok;
+
+var& Channel channel;
+spawn New_Channel(&conn) -> (&channel);
+    
+var& Exchange e, e2, user_amq_def;
+spawn New_Exchange(&channel, ExchangeContext("test_exchange_topic", "topic",
+                                             _,_,true,_,_amqp_empty_table)) 
+                      -> (&e); 
+
+spawn New_Exchange(&channel, ExchangeContext("test_exchange_direct", "direct",
+                                             _,_,true,_,_amqp_empty_table)) 
+                      -> (&e2); 
+
+spawn New_Exchange(&channel, ExchangeContext(_,_,_,_,true,_,_amqp_empty_table)) 
+                      -> (&user_amq_def); 
+
+await 2s;
 
 escape 0;
 #endif
