@@ -1,0 +1,41 @@
+#ifndef _AMQP_BASE_CEU
+#define _AMQP_BASE_CEU
+
+native/pre do
+    ##include "base.c"
+    ##include "utils.c"
+end
+
+native/plain 
+    _plain_string, 
+    _amqp_basic_properties_t, // properties for basic methods
+    _amqp_boolean_t, // this is an `int`
+    _amqp_bytes_t, // amqp representation for strings; `struct` with inner bytes pointer: https://git.io/vrcWN
+    _amqp_envelope_t,
+    _amqp_empty_bytes,
+    _amqp_empty_table,
+    _amqp_table_t,
+;
+
+native/pure
+    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
+
+
+native/nohold
+    _amqp_bytes_free,
+    _amqp_bytes_malloc_dup,
+    _amqp_dump,
+    _amqp_get_rpc_reply,
+    _die_on_amqp_error,
+    _die_on_error,
+    _stringify_bytes,
+
+;
+
+native
+    _AMQP_REPLY_SUCCESS,
+    _amqp_rpc_reply_t,
+    _die,
+;
+
+#endif
