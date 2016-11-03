@@ -1,101 +1,156 @@
 #ifndef _CHANNEL_CEU
 #define _CHANNEL_CEU
 
+#include <c.ceu>
+#include <uv/uv.ceu>
+
+#include "amqp_base.ceu"
 #include "connection.ceu"
+#include "handler.ceu"
 
-class Channel with
-  var Connection& conn;
-output:
-  var int id;
+native/pre do
+    amqp_envelope_t new_envelope() {
+        amqp_envelope_t msg;
+        return msg;
+    }
+end
+
+native/pure
+    _new_envelope,
+;
+
+native/nohold
+    _amqp_channel_open,
+    _amqp_channel_close,
+    _amqp_consume_message,
+    _amqp_destroy_envelope,
+;
+
+data Channel with
+    var& Connection conn;
+    var  int        id;
+end
+
+code/await LowHandler (var _amqp_envelope_t message) -> void
 do
-  native do
-    ##include <stdlib.h>
-    ##include <stdio.h>
-    ##include <string.h>
-    ##include <stdint.h>
-    
-    ##include <amqp_tcp_socket.h>
-    ##include <amqp.h>
-    ##include <amqp_framing.h>
-
-    ##include "utils.c"
+  do finalize with
+    _amqp_destroy_envelope(&&message);
+#ifdef DEBUG
+    _printf("Destroyed message with consumer tag `%s`.\n", 
+            _stringify_bytes(message.consumer_tag));
+#endif
   end
-
-  // prototype hacks
-  native @nohold  _amqp_get_rpc_reply;
-  native @nohold  _amqp_channel_open;
-  native @nohold  _amqp_channel_close;
-  native @plain _amqp_connection_state_t_;
-
-  // protected variables
-  this.id = conn.next_channel_id();
-  conn.inc_channel_id();
-
-  // body
-    _amqp_channel_open(&&conn.state, id);
-
-  // this.conn.open_channel(&this);
-  ///finalize with
-    // this.conn.close_channel(&this);
-
-    _die_on_amqp_error(_amqp_get_rpc_reply(&&conn.state), "Opening channel");
-    _printf("Opened channel!\n");
-    finalize with
-      _die_on_amqp_error(_amqp_channel_close(&&conn.state, id, _AMQP_REPLY_SUCCESS), "Closing channel");
-      _printf("Closed channel!\n");
-    end
-  await FOREVER;
+  spawn Handler (message);
 end
 
-#if 0
-// little test
-input void TEST_CLOSE;
-par/or do
-  var Connection c with
-    this.hostname = [] .. "localhost";
-    this.port = 5672;
-    this.vhost = [] .. "/";
-    this.channel_max = 0;
-    this.frame_max = 131072;
-    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-    this.user = [] .. "guest";
-    this.password = [] .. "guest";
-  end;
+code/await New_Channel (var& Connection conn) 
+                            -> (var& Channel ch)
+                                -> FOREVER 
+do
+    // export channel
+    var int channel_id = call Next_Channel_Id(&conn);
+    var Channel ch_ = val Channel(&conn, channel_id);
+    ch = &ch_;
 
-  watching c do
-    pool Channel[5] chs; //segfault
-
-    #if 1  
-    var Channel ch with
-      this.conn = &c;
-    end;
-    _printf("Channel ID: %d\n", ch.id);
-
-    var Channel ch2 with
-      this.conn = &c;
-    end;
-    _printf("Channel ID: %d\n", ch2.id);
-    #endif
-
-    #if 1
-    // Segfault:
-    // =========
-    loop i in 5 do
-      var Channel&&? ch =
-        spawn Channel in chs with
-          this.conn = &c;
-        end;
-      _printf("Channel ID: %d\n", ch!:id);
+    // body
+    _amqp_channel_open(&&ch_.conn.state, ch_.id);
+    _die_on_amqp_error(_amqp_get_rpc_reply(&&ch_.conn.state), "Opening channel");
+#ifdef DEBUG
+    _printf("Opened channel with ID %d!\n", ch_.id);
+#endif
+   
+    do finalize with
+        _die_on_amqp_error(_amqp_channel_close(&&ch_.conn.state, ch_.id, _AMQP_REPLY_SUCCESS), "Closing channel");
+#ifdef DEBUG
+            _printf("Closed channel!\n");
+#endif  
     end
-    #endif
 
-    await TEST_CLOSE;
-  end
-with
-  async do
-    emit TEST_CLOSE;
-  end
+    await FOREVER;
 end
+
+code/await New_Channel_Consume (var& Connection conn, pool&[] LowHandler handlers)
+                                    -> (var& Channel channel)
+                                        -> FOREVER
+do
+    var& Channel channel_;
+    spawn New_Channel(&conn) -> (&channel_);
+    channel = &channel_;
+
+    loop do
+#ifdef DEBUG
+        _printf("Consuming...\n");
+#endif
+        var _amqp_envelope_t message = _new_envelope();   
+
+        // Get messages received by the channel and dispatch to handlers...
+        await async/thread (channel_, message) do
+        // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
+        //                      struct timeval *timeout, AMQP_UNUSED int flags)
+            atomic do
+                _amqp_consume_message(&&channel_.conn.state, &&message, null, 0);
+            end
+        end
+        _printf("Received msg!\n");
+        spawn LowHandler (message) in handlers;
+    end
+
+    await FOREVER;
+end
+
+code/await New_Channel_Consume2 (var& Connection conn, var& Channel channel_, pool&[] LowHandler handlers)
+                                    -> void
+do
+    loop do
+#ifdef DEBUG
+        _printf("Consuming...\n");
+#endif
+        var _amqp_envelope_t message = _new_envelope();  
+
+        await 100ms; 
+        // Get messages received by the channel and dispatch to handlers...
+        //await async/thread (channel_, message) do
+        // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
+        //                      struct timeval *timeout, AMQP_UNUSED int flags)
+        //    atomic do
+                _amqp_consume_message(&&channel_.conn.state, &&message, null, 0);
+        //   end
+        //end
+        _printf("Received msg!\n");
+        spawn LowHandler (message) in handlers;
+    end
+
+    await FOREVER;
+end
+
+#ifdef channel_test
+var& Connection conn;
+event& void conn_ok;
+
+spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
+await conn_ok;
+
+pool[] New_Channel ch_pool;
+
+var& Channel ch;
+spawn New_Channel(&conn) -> (&ch);
+_printf("Channel ID  : %d\n", ch.id);
+
+var int i;
+loop i in [0 -> 5[ do
+    var& Channel ch_;
+    spawn New_Channel(&conn) -> (&ch_) in ch_pool;
+    _printf("Channel %d ID  : %d\n", i, ch_.id);
+    // How to preserve this later?
+end
+
+pool[] LowHandler handlers;
+
+var& Channel ch_consume;
+spawn New_Channel_Consume(&conn, &handlers) -> (&ch_consume);
+_printf("Channel ID  : %d\n", ch_consume.id);
+
+await 2s;
 
 escape 0;
 #endif
