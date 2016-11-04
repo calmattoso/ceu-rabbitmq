@@ -14,8 +14,11 @@ native/nohold
     _amqp_tcp_socket_new,
 ;
 
-native
+native/const
     _AMQP_SASL_METHOD_PLAIN,
+;
+
+native
     _amqp_connection_state_t_,
     _amqp_new_connection,
     _amqp_socket_t,
@@ -27,43 +30,22 @@ data Connection with
 end
 
 data ConnectionContext with
-    var _plain_string hostname    = "localhost";
+    var _plain_string hostname = "localhost";
     var int           port        = 5672;
     var _plain_string vhost       = "/";
     var int           channel_max = 0;
     var int           frame_max   = 131072;
-    var int           sasl_method = _AMQP_SASL_METHOD_PLAIN;
+    var int           sasl_method = 0;//_AMQP_SASL_METHOD_PLAIN;
     var _plain_string user        = "guest";
     var _plain_string password    = "guest";
 end
 
-code/await New_Connection (var ConnectionContext ctx)
+_printf("%d\n", _AMQP_SASL_METHOD_PLAIN);
+
+code/await New_Connection (var ConnectionContext ctx) 
                             -> (var& Connection conn, event& void ok)
                                 -> FOREVER
 do
-    // presets
-    if ctx.hostname == null then
-        ctx.hostname = "localhost";
-    end
-    if ctx.port == 0 then
-        ctx.port = 5672;
-    end
-    if ctx.vhost == null then
-        ctx.vhost = "/";
-    end
-    if ctx.frame_max == 0 then
-        ctx.frame_max = 131072; 
-    end
-    if ctx.sasl_method == 0 then
-        ctx.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-    end
-    if ctx.user == null then
-        ctx.user = "guest";
-    end
-    if ctx.password == null then
-        ctx.password = "guest";
-    end
-
     var&? _amqp_connection_state_t_ state_;
     do
         state_ = &_amqp_new_connection();
@@ -123,7 +105,8 @@ var& Connection conn;
 event& void conn_ok;
 
 // little test
-spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
+var ConnectionContext c = _;
+spawn New_Connection(c) -> (&conn, &conn_ok);
 await conn_ok;
 
 var int channel_id = call Next_Channel_Id(&conn);

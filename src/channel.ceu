@@ -43,8 +43,8 @@ do
   spawn Handler (message);
 end
 
-code/await New_Channel (var& Connection conn) 
-                            -> (var& Channel ch)
+code/await New_Channel (var& Connection conn, pool&[] LowHandler handlers) 
+                            -> (var& Channel ch, event& void ok)
                                 -> FOREVER 
 do
     // export channel
@@ -52,30 +52,18 @@ do
     var Channel ch_ = val Channel(&conn, channel_id);
     ch = &ch_;
 
-    // body
-    _amqp_channel_open(&&ch_.conn.state, ch_.id);
+    _printf("Opening channel...");
+    event void ok_;
+    ok = &ok_;
+    await async/thread(ch_) do
+        _amqp_channel_open(&&ch_.conn.state, ch_.id);
+    end
     _die_on_amqp_error(_amqp_get_rpc_reply(&&ch_.conn.state), "Opening channel");
+    emit ok_;
+
 #ifdef DEBUG
     _printf("Opened channel with ID %d!\n", ch_.id);
 #endif
-   
-    do finalize with
-        _die_on_amqp_error(_amqp_channel_close(&&ch_.conn.state, ch_.id, _AMQP_REPLY_SUCCESS), "Closing channel");
-#ifdef DEBUG
-            _printf("Closed channel!\n");
-#endif  
-    end
-
-    await FOREVER;
-end
-
-code/await New_Channel_Consume (var& Connection conn, pool&[] LowHandler handlers)
-                                    -> (var& Channel channel)
-                                        -> FOREVER
-do
-    var& Channel channel_;
-    spawn New_Channel(&conn) -> (&channel_);
-    channel = &channel_;
 
     loop do
 #ifdef DEBUG
@@ -84,73 +72,49 @@ do
         var _amqp_envelope_t message = _new_envelope();   
 
         // Get messages received by the channel and dispatch to handlers...
-        await async/thread (channel_, message) do
-        // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
-        //                      struct timeval *timeout, AMQP_UNUSED int flags)
-            atomic do
-                _amqp_consume_message(&&channel_.conn.state, &&message, null, 0);
-            end
+        _printf("Before!\n");
+        await async/thread(ch_, message) do
+            // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
+            //                      struct timeval *timeout, AMQP_UNUSED int flags)
+            _amqp_consume_message(&&ch_.conn.state, &&message, null, 0);
         end
+
         _printf("Received msg!\n");
         spawn LowHandler (message) in handlers;
     end
 
-    await FOREVER;
-end
-
-code/await New_Channel_Consume2 (var& Connection conn, var& Channel channel_, pool&[] LowHandler handlers)
-                                    -> void
-do
-    loop do
+   
+    do finalize with
+        _die_on_amqp_error(_amqp_channel_close(&&ch_.conn.state, ch_.id, _AMQP_REPLY_SUCCESS), "Closing channel");
 #ifdef DEBUG
-        _printf("Consuming...\n");
-#endif
-        var _amqp_envelope_t message = _new_envelope();  
-
-        await 100ms; 
-        // Get messages received by the channel and dispatch to handlers...
-        //await async/thread (channel_, message) do
-        // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
-        //                      struct timeval *timeout, AMQP_UNUSED int flags)
-        //    atomic do
-                _amqp_consume_message(&&channel_.conn.state, &&message, null, 0);
-        //   end
-        //end
-        _printf("Received msg!\n");
-        spawn LowHandler (message) in handlers;
+        _printf("Closed channel!\n");
+#endif  
     end
 
     await FOREVER;
 end
 
 #ifdef channel_test
-var& Connection conn;
-event& void conn_ok;
+var ConnectionContext def_c = _;
+par/or do
+    var& Connection conn;
+    event& void conn_ok;
+    pool[] LowHandler handlers;
 
-spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
-await conn_ok;
+    spawn New_Connection(def_c) -> (&conn, &conn_ok);
+    await conn_ok;
 
-pool[] New_Channel ch_pool;
+    var& Channel ch;
+    event& void chann_ok;
+    spawn New_Channel(&conn, &handlers) -> (&ch, &chann_ok);
+    await chann_ok;
 
-var& Channel ch;
-spawn New_Channel(&conn) -> (&ch);
-_printf("Channel ID  : %d\n", ch.id);
-
-var int i;
-loop i in [0 -> 5[ do
-    var& Channel ch_;
-    spawn New_Channel(&conn) -> (&ch_) in ch_pool;
-    _printf("Channel %d ID  : %d\n", i, ch_.id);
-    // How to preserve this later?
+    _printf("After!\n");
+    await 20s;
+with
+    await 10s;
+    _printf("Test over...\n");
 end
-
-pool[] LowHandler handlers;
-
-var& Channel ch_consume;
-spawn New_Channel_Consume(&conn, &handlers) -> (&ch_consume);
-_printf("Channel ID  : %d\n", ch_consume.id);
-
-await 2s;
 
 escape 0;
 #endif
