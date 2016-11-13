@@ -2,7 +2,7 @@
 #define _Q2X_CEU
 
 #include <c.ceu>
-#include <uv/uv.ceu>
+#include <sdl/sdl.ceu>
 
 #include "amqp_base.ceu"
 #include "channel.ceu"
@@ -19,29 +19,36 @@ code/await Bind_Queue (var& Channel       channel,
                      var& Exchange      exchange, 
                      var  _plain_string binding_key,
                      var  _amqp_table_t arguments)
-                         -> void
+                        -> (event& void ok)
+                            -> FOREVER
 do
+    event void ok_;
+    ok = &ok_;
+
     var _amqp_bytes_t binding_key_bytes = _amqp_cstring_bytes(binding_key);
 
 	// Bind queue to exchange
 	// amqp_queue_bind(amqp_connection_state_t state, amqp_channel_t channel, 
     //                 amqp_bytes_t queue, amqp_bytes_t exchange, 
     //                 amqp_bytes_t routing_key, amqp_table_t arguments)
-	_amqp_queue_bind(&&channel.conn.state, channel.id, queue.name_bytes,
-					 exchange.name_bytes, binding_key_bytes, arguments);
+    await async/thread(channel, queue, exchange, binding_key_bytes, arguments) do
+	    _amqp_queue_bind(&&channel.conn.state, channel.id, queue.name_bytes,
+					     exchange.name_bytes, binding_key_bytes, arguments);
+    end
     _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Binding queue to exchange.");
 #ifdef DEBUG
     _printf("Bound queue `%s` to exchange `%s` with key `%s`.\n", 
             _stringify_bytes(queue.name_bytes),
             _stringify_bytes(exchange.name_bytes),
             binding_key);
-#endif						 
+#endif	
+    emit ok_;					 
 	
     do finalize with
         _amqp_queue_unbind(&&channel.conn.state, channel.id, queue.name_bytes,
-                           exchange.name_bytes, binding_key_bytes, arguments);
+                               exchange.name_bytes, binding_key_bytes, arguments);
 #ifdef DEBUG
-        _printf("Unbinded queue `%s` and exchange `%s`.\n", 
+        _printf("Unbound queue `%s` and exchange `%s`.\n", 
                 _stringify_bytes(queue.name_bytes), 
                 _stringify_bytes(exchange.name_bytes));
 #endif
@@ -51,22 +58,30 @@ do
 end
 
 #ifdef q2x_bind_test
-var& Connection conn;
-event& void conn_ok;
+par/or do
+    var& Connection conn;
+    event& void conn_ok;
 
-spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
-await conn_ok;
+    spawn New_Connection(_) -> (&conn, &conn_ok);
+    await conn_ok;
 
-var& Channel channel;
-spawn New_Channel(&conn) -> (&channel);
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);
+    await ch_ok;
 
-var& Queue queue;
-spawn New_Queue(&channel, QueueContext("test_queue",_,_,_,true,_amqp_empty_table)) 
-        -> (&queue);
+    var& Queue queue;
+    event& void q_ok;
+    spawn New_Queue(&channel, _) -> (&queue, &q_ok);
+    await q_ok;
 
-spawn Bind_Queue(&channel, &queue, &amq_direct, "baloney", _amqp_empty_table);
-
-await 2s;
+    event& void bind_ok;
+    spawn Bind_Queue(&channel, &queue, &amq_direct, "baloney", _amqp_empty_table) 
+            -> (&bind_ok);
+    await bind_ok;
+with
+    await 2s;
+end
 
 escape 0;
 #endif
