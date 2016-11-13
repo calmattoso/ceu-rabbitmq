@@ -2,7 +2,7 @@
 #define _QUEUE_CEU
 
 #include <c.ceu>
-#include <uv/uv.ceu>
+#include <sdl/sdl.ceu>
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
@@ -31,9 +31,12 @@ data QueueContext with
 end
 
 code/await New_Queue (var& Channel channel, var QueueContext ctx)
-                        -> (var& Queue q)
+                        -> (var& Queue q, event& void ok)
                             -> FOREVER
 do
+    event void ok_;
+    ok = &ok_;
+
     var _amqp_bytes_t name_bytes;
     if ctx.name != null then  
         name_bytes = _amqp_cstring_bytes(ctx.name);
@@ -46,20 +49,26 @@ do
     //                    amqp_bytes_t queue, amqp_boolean_t passive, 
     //                    amqp_boolean_t durable, amqp_boolean_t exclusive, 
     //                    amqp_boolean_t auto_delete, amqp_table_t arguments);
-    var _amqp_queue_declare_ok_t&& r = 
-        _amqp_queue_declare(&&channel.conn.state, channel.id, name_bytes, 
-                            ctx.passive as _amqp_boolean_t, ctx.durable as _amqp_boolean_t,
-                            ctx.exclusive as _amqp_boolean_t, ctx.auto_delete as _amqp_boolean_t,
-                            ctx.arguments);
-    _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring queue");
-
-    // Get the broker defined queue name, which uniquely identifies the queue
-    var Queue q_ = val Queue((*r).queue);
+    var Queue q_ = val Queue(_);
     q = &q_;
+
+    await async/thread(channel, ctx, name_bytes, q_) do 
+        var _amqp_queue_declare_ok_t&& r = 
+            _amqp_queue_declare(&&channel.conn.state, channel.id, name_bytes, 
+                                ctx.passive as _amqp_boolean_t, 
+                                ctx.durable as _amqp_boolean_t,
+                                ctx.exclusive as _amqp_boolean_t,
+                                ctx.auto_delete as _amqp_boolean_t,
+                                ctx.arguments);
+        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring queue");
+        q_.name_bytes = (*r).queue; 
+    end
 
 #ifdef DEBUG
     _printf("Declared queue with name `%s`.\n", _stringify_bytes(q_.name_bytes));
 #endif
+
+    emit ok_;
 
     // Delete queue upon termination...
     do finalize with
@@ -78,19 +87,28 @@ end
 var& Connection conn;
 event& void conn_ok;
 
-spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
+spawn New_Connection(_) -> (&conn, &conn_ok);
 await conn_ok;
 
 var& Channel channel;
-spawn New_Channel(&conn) -> (&channel);
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;
 
-var& Queue q, q2, q_null_name;
+var& Queue q;
+event& void q_ok1;
+spawn New_Queue(&channel, QueueContext("test_queue",_,_,_,_,_)) -> (&q, &q_ok1);
+await q_ok1;
 
-spawn New_Queue(&channel, QueueContext("test_queue",_,_,_,true,_amqp_empty_table)) -> (&q);
+var& Queue q2;
+event& void q_ok2;
+spawn New_Queue(&channel, QueueContext("",_,_,_,_,_)) -> (&q2, &q_ok2);
+await q_ok2;
 
-spawn New_Queue(&channel, QueueContext("",_,_,_,true,_amqp_empty_table)) -> (&q2);
-
-spawn New_Queue(&channel, QueueContext(_,_,_,_,true,_amqp_empty_table)) -> (&q_null_name);
+var& Queue q_null_name;
+event& void q_ok3;
+spawn New_Queue(&channel, _) -> (&q_null_name, &q_ok3);
+await q_ok3;
 
 await 2s;
 
