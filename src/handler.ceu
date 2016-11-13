@@ -2,13 +2,15 @@
 #define _HANDLER_CEU
 
 #include <c.ceu>
-#include <uv/uv.ceu>
+#include <sdl/sdl.ceu>
 
 #include "amqp_base.ceu"
+#include "envelope.ceu"
 
-code/await Handler (var _amqp_envelope_t message) -> void do
-    _printf("Received message for ctag `%s`.\n", _stringify_bytes(message.consumer_tag));
-    _amqp_dump(message.message.body.bytes, message.message.body.len);
+code/await Handler (var Envelope env) -> void do
+    _printf("Received message for ctag `%s`.\n", 
+            _stringify_bytes(env.contents.consumer_tag));
+    _amqp_dump(env.contents.message.body.bytes, env.contents.message.body.len);
 end
 
 #endif

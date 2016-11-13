@@ -2,22 +2,12 @@
 #define _CHANNEL_CEU
 
 #include <c.ceu>
-#include <uv/uv.ceu>
+#include <sdl/sdl.ceu>
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
+#include "envelope.ceu"
 #include "handler.ceu"
-
-native/pre do
-    amqp_envelope_t new_envelope() {
-        amqp_envelope_t msg;
-        return msg;
-    }
-end
-
-native/pure
-    _new_envelope,
-;
 
 native/nohold
     _amqp_channel_open,
@@ -31,19 +21,19 @@ data Channel with
     var  int        id;
 end
 
-code/await LowHandler (var _amqp_envelope_t message) -> void
+code/await LowHandler (var Envelope env) -> void
 do
   do finalize with
-    _amqp_destroy_envelope(&&message);
+    _amqp_destroy_envelope(&&env.contents);
 #ifdef DEBUG
-    _printf("Destroyed message with consumer tag `%s`.\n", 
-            _stringify_bytes(message.consumer_tag));
+    _printf("Destroyed message envelope with consumer tag `%s`.\n", 
+            _stringify_bytes(env.contents.consumer_tag));
 #endif
   end
-  spawn Handler (message);
+  spawn Handler (env);
 end
 
-code/await New_Channel (var& Connection conn, pool&[] LowHandler handlers) 
+code/await New_Channel (var& Connection conn) 
                             -> (var& Channel ch, event& void ok)
                                 -> FOREVER 
 do
@@ -52,37 +42,19 @@ do
     var Channel ch_ = val Channel(&conn, channel_id);
     ch = &ch_;
 
-    _printf("Opening channel...");
+#ifdef DEBUG
+    _printf("Opening channel...\n");
+#endif
     event void ok_;
     ok = &ok_;
     await async/thread(ch_) do
         _amqp_channel_open(&&ch_.conn.state, ch_.id);
     end
     _die_on_amqp_error(_amqp_get_rpc_reply(&&ch_.conn.state), "Opening channel");
-    emit ok_;
-
 #ifdef DEBUG
     _printf("Opened channel with ID %d!\n", ch_.id);
 #endif
-
-    loop do
-#ifdef DEBUG
-        _printf("Consuming...\n");
-#endif
-        var _amqp_envelope_t message = _new_envelope();   
-
-        // Get messages received by the channel and dispatch to handlers...
-        _printf("Before!\n");
-        await async/thread(ch_, message) do
-            // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
-            //                      struct timeval *timeout, AMQP_UNUSED int flags)
-            _amqp_consume_message(&&ch_.conn.state, &&message, null, 0);
-        end
-
-        _printf("Received msg!\n");
-        spawn LowHandler (message) in handlers;
-    end
-
+    emit ok_;
    
     do finalize with
         _die_on_amqp_error(_amqp_channel_close(&&ch_.conn.state, ch_.id, _AMQP_REPLY_SUCCESS), "Closing channel");
@@ -94,25 +66,49 @@ do
     await FOREVER;
 end
 
+code/await Channel_Consume(var& Channel ch, pool&[] LowHandler handlers)
+                                -> FOREVER
+do
+    loop do
+#ifdef DEBUG
+        _printf("Consuming...\n");
+#endif
+        var _amqp_envelope_t envelope = _;   
+
+        // Get messages received by the channel and dispatch to handlers...
+        await async/thread(ch, envelope) do
+            // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
+            //                      struct timeval *timeout, AMQP_UNUSED int flags)
+        
+            _amqp_consume_message(&&ch.conn.state, &&envelope, null, 0);
+        end
+#ifdef DEBUG
+        _printf("Received msg!\n");
+#endif
+        spawn LowHandler(Envelope(envelope,
+                         _stringify_bytes(envelope.consumer_tag))) 
+        in handlers;
+    end
+end
+
+pool[] LowHandler default_handlers;
+
 #ifdef channel_test
-var ConnectionContext def_c = _;
 par/or do
     var& Connection conn;
     event& void conn_ok;
-    pool[] LowHandler handlers;
 
-    spawn New_Connection(def_c) -> (&conn, &conn_ok);
+    spawn New_Connection(_) -> (&conn, &conn_ok);
     await conn_ok;
 
     var& Channel ch;
-    event& void chann_ok;
-    spawn New_Channel(&conn, &handlers) -> (&ch, &chann_ok);
-    await chann_ok;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&ch, &ch_ok);
+    await ch_ok;
 
-    _printf("After!\n");
-    await 20s;
+    await Channel_Consume(&ch, &default_handlers);
 with
-    await 10s;
+    await 2s;
     _printf("Test over...\n");
 end
 
