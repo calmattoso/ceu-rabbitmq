@@ -1,0 +1,21 @@
+#include <c.ceu>
+#include <sdl/sdl.ceu>
+
+#include <connection.ceu>
+#include <channel.ceu>
+#include <publish.ceu>
+
+var& Connection conn;
+event& void conn_ok;
+spawn New_Connection(_) -> (&conn, &conn_ok);
+await conn_ok;
+
+var& Channel channel;
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;
+
+await Publish(&channel, &amq_default, 
+              PublishContext("hello", "Hello from Ceu!",_,_,default_props));
+escape 0;
+

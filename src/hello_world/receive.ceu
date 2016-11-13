@@ -1,0 +1,33 @@
+#include <c.ceu>
+#include <sdl/sdl.ceu>
+
+#include <connection.ceu>
+#include <channel.ceu>
+#include <queue.ceu>
+#include <q_subscribe.ceu>
+
+var& Connection conn;
+event& void conn_ok;
+spawn New_Connection(_) -> (&conn, &conn_ok);
+await conn_ok;
+
+var& Channel channel;
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;
+
+var& Queue queue;
+event& void q_ok;
+var QueueContext ctx = val QueueContext("hello",false,false,false,true,_amqp_empty_table);
+spawn New_Queue(&channel, ctx) 
+        -> (&queue, &q_ok);
+await q_ok;
+
+var& _amqp_bytes_t consumer_tag;
+event& void qsub_ok;
+spawn Subscribe_Queue(&channel, &queue, _, null) -> (&consumer_tag, &qsub_ok);
+await qsub_ok;
+
+// Setup is done, so activate consumption
+await Channel_Consume(&channel, &default_handlers);
+
