@@ -2,7 +2,7 @@
 #define _PUBLISH_CEU
 
 #include <c.ceu>
-#include <uv/uv.ceu>
+#include <sdl/sdl.ceu>
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
@@ -22,15 +22,7 @@ native/nohold
     _amqp_basic_publish,
 ;
 
-native/pre do
-    amqp_basic_properties_t new_props() {
-        amqp_basic_properties_t props;
-
-        return props;
-    }
-end
-
-var _amqp_basic_properties_t default_props = _new_props();
+var _amqp_basic_properties_t default_props = _;
 default_props.__flags = _AMQP_BASIC_CONTENT_TYPE_FLAG | _AMQP_BASIC_DELIVERY_MODE_FLAG;
 default_props.content_type = _amqp_cstring_bytes("text/plain");
 default_props.delivery_mode = 2;
@@ -59,11 +51,9 @@ do
         var _amqp_bytes_t body_bytes        = _amqp_cstring_bytes(ctx.body),
                           routing_key_bytes = _amqp_cstring_bytes(ctx.routing_key);
     
-        atomic do
-            ret = _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
-                                      routing_key_bytes, ctx.mandatory as _amqp_boolean_t,
-                                      ctx.immediate as _amqp_boolean_t, &&ctx.properties, body_bytes);
-        end
+        ret = _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
+                                  routing_key_bytes, ctx.mandatory as _amqp_boolean_t,
+                                  ctx.immediate as _amqp_boolean_t, &&ctx.properties, body_bytes);
         _die_on_error(ret, "Failed to publish message.");
 #ifdef DEBUG
         _printf("Published message!\n");
@@ -75,18 +65,20 @@ end
 // little test
 var& Connection conn;
 event& void conn_ok;
-
-spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
+spawn New_Connection(_) -> (&conn, &conn_ok);
 await conn_ok;
 
 var& Channel channel;
-spawn New_Channel(&conn) -> (&channel);       
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;    
 
 par/or do
-    every 500ms do
-        spawn Publish(&channel, &amq_direct, 
+   loop do
+        await Publish(&channel, &amq_default, 
                       PublishContext("hello", "Hello from Ceu!",
                                      _,_,default_props));
+        await 500ms;    
     end
 with    
     await (2.1)s;
