@@ -2,7 +2,7 @@
 #define _EXCHANGE_CEU
 
 #include <c.ceu>
-#include <uv/uv.ceu>
+#include <sdl/sdl.ceu>
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
@@ -35,9 +35,12 @@ data ExchangeContext with
 end
 
 code/await New_Exchange (var& Channel channel, var ExchangeContext ctx)
-                            -> (var& Exchange ex)
+                            -> (var& Exchange ex, event& void ok)
                                 -> FOREVER
 do
+    event void ok_;
+    ok = &ok_;
+
     // Convert the exchange name to the expected format, if pre-defined by user
     var _amqp_bytes_t name_bytes;
     if ctx.name != null then
@@ -68,16 +71,21 @@ do
         //                       amqp_bytes_t exchange, amqp_bytes_t type, amqp_boolean_t passive,
         //                       amqp_boolean_t durable, amqp_boolean_t auto_delete, 
         //                       amqp_boolean_t internal, amqp_table_t arguments);
-        _amqp_exchange_declare(&&channel.conn.state, channel.id, name_bytes, 
-                               type_bytes, ctx.passive as _amqp_boolean_t, 
-                               ctx.durable as _amqp_boolean_t, ctx.auto_delete as _amqp_boolean_t,
-                               ctx.internal as _amqp_boolean_t, ctx.arguments);
+        await async/thread(channel, ctx, name_bytes, type_bytes) do
+            _amqp_exchange_declare(&&channel.conn.state, channel.id, name_bytes, 
+                                   type_bytes, ctx.passive as _amqp_boolean_t, 
+                                   ctx.durable as _amqp_boolean_t, ctx.auto_delete as _amqp_boolean_t,
+                                   ctx.internal as _amqp_boolean_t, ctx.arguments);
+        end
         _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring exchange");
 #ifdef DEBUG
         _printf("Declared exchange of type `%s` with name `%s`.\n", ctx.type, ctx.name);
+#endif
+        emit ok_;
+#ifdef DEBUG
     else
         _printf("Using default exchange `%s`.\n", _stringify_bytes(name_bytes));
-#endif
+#endif    
     end
 
     await FOREVER;
@@ -94,23 +102,32 @@ var Exchange amq_default = val Exchange(_amqp_cstring_bytes(AMQ_DEFAULT)),
 var& Connection conn;
 event& void conn_ok;
 
-spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
+spawn New_Connection(_) -> (&conn, &conn_ok);
 await conn_ok;
 
 var& Channel channel;
-spawn New_Channel(&conn) -> (&channel);
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;
     
-var& Exchange e, e2, user_amq_def;
+var& Exchange e;
+event& void ex_ok1;
 spawn New_Exchange(&channel, ExchangeContext("test_exchange_topic", "topic",
-                                             _,_,true,_,_amqp_empty_table)) 
-                      -> (&e); 
+                                             _,_,_,_,_)) 
+                      -> (&e, &ex_ok1); 
+await ex_ok1;
 
-spawn New_Exchange(&channel, ExchangeContext("test_exchange_direct", "direct",
-                                             _,_,true,_,_amqp_empty_table)) 
-                      -> (&e2); 
+var& Exchange e2;
+event& void ex_ok2;
+spawn New_Exchange(&channel, ExchangeContext("test_exchange_direct",_,_,_,_,_,_)) 
+                      -> (&e2, &ex_ok2); 
+await ex_ok2;
 
-spawn New_Exchange(&channel, ExchangeContext(_,_,_,_,true,_,_amqp_empty_table)) 
-                      -> (&user_amq_def); 
+// Below shows the function "creates" the default exchange correctly. However,
+// the default instantiated exchanges should be used instead.
+var& Exchange user_amq_def;
+event& void ex_ok3;
+spawn New_Exchange(&channel, _) -> (&user_amq_def, &ex_ok3);
 
 await 2s;
 
