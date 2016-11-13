@@ -2,7 +2,7 @@
 #define _CONNECTION_CEU
 
 #include <c.ceu>
-#include <uv/uv.ceu>
+#include <sdl/sdl.ceu>
 
 #include "amqp_base.ceu"
 
@@ -39,8 +39,6 @@ data ConnectionContext with
     var _plain_string user        = "guest";
     var _plain_string password    = "guest";
 end
-
-_printf("%d\n", _AMQP_SASL_METHOD_PLAIN);
 
 code/await New_Connection (var ConnectionContext ctx) 
                             -> (var& Connection conn, event& void ok)
