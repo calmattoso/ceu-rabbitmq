@@ -1,43 +1,33 @@
-#include "connection.ceu"
-#include "channel.ceu"
-#include "q2x_bind.ceu"
-#include "exchange.ceu"
-#include "queue.ceu"
-#include "consume.ceu"
+#include <c.ceu>
+#include <sdl/sdl.ceu>
 
-watching default_connection do
-  var Channel ch with
-    this.conn = &default_connection;
-  end;
-  _printf("Channel ID: %d\n", ch.id);
+#include <connection.ceu>
+#include <channel.ceu>
+#include <queue.ceu>
+#include <q_subscribe.ceu>
 
-  watching ch do
-    pool Queue[] qs;
-    pool LowHandler[] hs;
+var& Connection conn;
+event& void conn_ok;
+spawn New_Connection(_) -> (&conn, &conn_ok);
+await conn_ok;
 
-    spawn Queue in qs with
-      this.channel = &ch;
-      this.name = [].."hello";
-      this.passive = false;
-      this.durable = false;
-      this.exclusive = false;
-      this.auto_delete = true;
-      this.create_arguments = _amqp_empty_table;
+var& Channel channel;
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;
 
-      this.no_local = false;
-      this.no_ack = true;
-      this.consume_exclusive = false;
-      this.consume_arguments = _amqp_empty_table;
-    end;
+var& Queue queue;
+event& void q_ok;
+var QueueContext ctx = val QueueContext("hello",false,false,false,true,_amqp_empty_table);
+spawn New_Queue(&channel, ctx) 
+        -> (&queue, &q_ok);
+await q_ok;
 
-    var Consume com with
-      this.channel  = &ch;
-      this.queues   = &qs;
-      this.handlers = &hs;
-    end;
+var& _amqp_bytes_t consumer_tag;
+event& void qsub_ok;
+spawn Subscribe_Queue(&channel, &queue, _, null) -> (&consumer_tag, &qsub_ok);
+await qsub_ok;
 
-    await com;
-  end
-end
+// Setup is done, so activate consumption
+await Channel_Consume(&channel, &default_handlers);
 
-escape 0;

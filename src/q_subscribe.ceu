@@ -1,0 +1,116 @@
+#ifndef _Q_SUBSCRIBE_CEU
+#define _Q_SUBSCRIBE_CEU
+
+#include <c.ceu>
+#include <sdl/sdl.ceu>
+
+#include "amqp_base.ceu"
+#include "connection.ceu"
+#include "channel.ceu"
+#include "queue.ceu"
+#include "q2x_bind.ceu"
+
+native/plain
+    _amqp_basic_consume_ok_t,
+;
+
+native/nohold
+    _amqp_basic_consume,
+    _amqp_basic_cancel,
+;
+
+data SubscribeContext with
+    var bool          no_local  = false;
+    var bool          no_ack    = true;
+    var bool          exclusive = false;
+    var _amqp_table_t arguments = _amqp_empty_table;
+end
+
+code/await Subscribe_Queue (var& Channel channel, var& Queue queue, 
+                            var SubscribeContext ctx, var _plain_string consumer_tag) 
+                                -> (var& _amqp_bytes_t consumer_tag_bytes, event& void ok)
+                                    -> FOREVER
+do
+    event void ok_;
+    ok = &ok_;
+
+    var _amqp_bytes_t consumer_tag_bytes_ = _amqp_empty_bytes;
+    if consumer_tag != null and _strlen(consumer_tag) > 0 then
+        consumer_tag_bytes_ = _amqp_cstring_bytes(consumer_tag);
+    end
+    consumer_tag_bytes = &consumer_tag_bytes_;
+
+    // amqp_basic_consume_ok_t *
+    // AMQP_CALL amqp_basic_consume(amqp_connection_state_t state, amqp_channel_t channel,
+    //                              amqp_bytes_t queue, amqp_bytes_t consumer_tag, 
+    //                              amqp_boolean_t no_local, amqp_boolean_t no_ack,
+    //                              amqp_boolean_t exclusive, amqp_table_t arguments)
+    await async/thread(channel, ctx, queue, consumer_tag_bytes_) do
+        var _amqp_basic_consume_ok_t&& consume_ok_r = 
+            _amqp_basic_consume(&&channel.conn.state, channel.id, queue.name_bytes, 
+                                consumer_tag_bytes_, ctx.no_local as _amqp_boolean_t, 
+                                ctx.no_ack as _amqp_boolean_t, ctx.exclusive as _amqp_boolean_t, 
+                                ctx.arguments);
+        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), 
+                           "Failed to subscribe to queue.");
+        
+        if consumer_tag_bytes_.len == 0 then
+            consumer_tag_bytes_ = consume_ok_r:consumer_tag;
+        end  
+    end
+#ifdef DEBUG
+    _printf("Subscribed to queue `%s` with consumer_tag `%s`.\n", 
+            _stringify_bytes(queue.name_bytes),
+            _stringify_bytes(consumer_tag_bytes_));
+#endif 
+
+    emit ok_;
+
+    do finalize with
+        _amqp_basic_cancel(&&channel.conn.state, channel.id,
+                           consumer_tag_bytes_);
+        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state),
+                           "Failed to unsubscribe from queue.");
+#ifdef DEBUG
+        _printf("Unsubscribed from queue `%s` with consumer_tag `%s`.\n", 
+                _stringify_bytes(queue.name_bytes),
+                _stringify_bytes(consumer_tag_bytes_));
+#endif 
+    end
+    await FOREVER;
+end
+
+#ifdef q_subscribe_test
+var& Connection conn;
+event& void conn_ok;
+
+spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
+await conn_ok;
+
+var& Channel channel;
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;
+
+var& Queue queue;
+event& void q_ok;
+spawn New_Queue(&channel, QueueContext("hello",_,_,_,_,_amqp_empty_table)) 
+        -> (&queue, &q_ok);
+await q_ok;
+
+event& void bind_ok;
+spawn Bind_Queue(&channel, &queue, &amq_direct, "hello", _amqp_empty_table) 
+        -> (&bind_ok);
+await bind_ok;
+
+var& _amqp_bytes_t consumer_tag;
+event& void qsub_ok;
+spawn Subscribe_Queue(&channel, &queue, _, null) -> (&consumer_tag, &qsub_ok);
+await qsub_ok;
+
+await 1s;
+
+escape 0;
+#endif
+
+#endif

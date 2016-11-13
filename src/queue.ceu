@@ -1,180 +1,116 @@
 #ifndef _QUEUE_CEU
 #define _QUEUE_CEU
 
+#include <c.ceu>
+#include <sdl/sdl.ceu>
+
+#include "amqp_base.ceu"
 #include "connection.ceu"
 #include "channel.ceu"
 
-class Queue with
-  event _amqp_envelope_t receive;
-input:
-  // Creation properties
-  var Channel& channel;
-  var char[] name;
-  var bool   passive;
-  var bool   durable;
-  var bool   exclusive;
-  var bool   auto_delete;
-  var _amqp_table_t create_arguments;
+native/plain
+    _amqp_queue_declare_ok_t,
+;
 
-  // Consumption properties
-  var bool no_local;
-  var bool no_ack;
-  var bool consume_exclusive;
-  var _amqp_table_t consume_arguments;
-output:
-  var _amqp_bytes_t name_bytes; // export the queue name in the library format
-  var _amqp_bytes_t consumer_tag; // export the consumer tag for listening on this queue
+native/nohold
+    _amqp_queue_declare,
+    _amqp_queue_delete,
+;
+
+data Queue with
+    var _amqp_bytes_t name_bytes;
+end
+
+data QueueContext with
+    var _plain_string name;
+    var bool          passive     = false;
+    var bool          durable     = false;
+    var bool          exclusive   = false;
+    var bool          auto_delete = true;
+    var _amqp_table_t arguments   = _amqp_empty_table;
+end
+
+code/await New_Queue (var& Channel channel, var QueueContext ctx)
+                        -> (var& Queue q, event& void ok)
+                            -> FOREVER
 do
-  native/pre do
-    ##include <stdlib.h>
-    ##include <stdio.h>
-    ##include <string.h>
-    ##include <stdint.h>
-    
-    ##include <amqp_tcp_socket.h>
-    ##include <amqp.h>
-    ##include <amqp_framing.h>
+    event void ok_;
+    ok = &ok_;
 
-    ##include "utils.c"
-  end
-
-  // prototype hacks
-  native @plain   _amqp_boolean_t; // this is an `int`
-  native @plain   _amqp_table_t;   // arguments for method; simple `struct` with inner pointer: https://git.io/vrcW9
-  native @plain   _amqp_bytes_t;   // amqp representation for strings; `struct` with inner bytes pointer: https://git.io/vrcWN
-  native @plain   _amqp_connection_state_t_;
-  native @plain   _amqp_queue_declare_ok_tp;
-  native @plain   _amqp_basic_consume_ok_t;
-  native @pure    _amqp_basic_consume;
-  native @nohold  _amqp_get_rpc_reply;
-  native @nohold  _amqp_bytes_malloc_dup;
-  native @nohold  _stringify_bytes;
-  native @nohold  _free;
-  native @nohold  _memcmp;
-  native @pure    _amqp_queue_declare;
-  native @pure    _amqp_cstring_bytes; // no `malloc` is done internally, it just points to `char*` as `void*`
-  native @pure    _strlen;
-  native @pure    _strcmp;
-
-  // BODY
-
-  // Convert the queue name to the expected format
-  name_bytes = _amqp_cstring_bytes((_char&&)&&name);
-
-  // Create the queue
-  // amqp_queue_declare(amqp_connection_state_t state, amqp_channel_t channel,
-  //                    amqp_bytes_t queue, amqp_boolean_t passive, 
-  //                    amqp_boolean_t durable, amqp_boolean_t exclusive, 
-  //                    amqp_boolean_t auto_delete, amqp_table_t arguments);
-  var _amqp_queue_declare_ok_t&& r = 
-      _amqp_queue_declare(&&channel.conn.state, channel.id, name_bytes, 
-                          (_amqp_boolean_t) passive, (_amqp_boolean_t) durable,
-                          (_amqp_boolean_t) exclusive, (_amqp_boolean_t) auto_delete,
-                          create_arguments);
-  _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring queue");
-
-  // Get the broker defined queue name, which uniquely identifies the queue
-  if not _strlen((_char&&)&&name) then
-    name_bytes = _amqp_bytes_malloc_dup((*r).queue);
-    finalize with
-      _amqp_bytes_free(name_bytes);
+    var _amqp_bytes_t name_bytes;
+    if ctx.name != null then  
+        name_bytes = _amqp_cstring_bytes(ctx.name);
+    else
+        name_bytes = _amqp_empty_bytes;
     end
-    if name_bytes.bytes == null then
-      _die("Out of memory while copying queue name");
+
+    // Create the queue
+    // amqp_queue_declare(amqp_connection_state_t state, amqp_channel_t channel,
+    //                    amqp_bytes_t queue, amqp_boolean_t passive, 
+    //                    amqp_boolean_t durable, amqp_boolean_t exclusive, 
+    //                    amqp_boolean_t auto_delete, amqp_table_t arguments);
+    var Queue q_ = val Queue(_);
+    q = &q_;
+
+    await async/thread(channel, ctx, name_bytes, q_) do 
+        var _amqp_queue_declare_ok_t&& r = 
+            _amqp_queue_declare(&&channel.conn.state, channel.id, name_bytes, 
+                                ctx.passive as _amqp_boolean_t, 
+                                ctx.durable as _amqp_boolean_t,
+                                ctx.exclusive as _amqp_boolean_t,
+                                ctx.auto_delete as _amqp_boolean_t,
+                                ctx.arguments);
+        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring queue");
+        q_.name_bytes = (*r).queue; 
     end
-  end
 
-  // Set consumption on this queue...
-  // amqp_basic_consume_ok_t *
-  // AMQP_CALL amqp_basic_consume(amqp_connection_state_t state, amqp_channel_t channel,
-  //                              amqp_bytes_t queue, amqp_bytes_t consumer_tag, 
-  //                              amqp_boolean_t no_local, amqp_boolean_t no_ack,
-  //                              amqp_boolean_t exclusive, amqp_table_t arguments)
-  var _amqp_basic_consume_ok_t&& consume_ok_r = _amqp_basic_consume(
-        &&channel.conn.state, 
-        channel.id,
-        (*r).queue, 
-        _amqp_empty_bytes, 
-        (_amqp_boolean_t) no_local, 
-        (_amqp_boolean_t) no_ack, 
-        (_amqp_boolean_t) consume_exclusive, 
-        consume_arguments);
-  _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Failed to put channel in consume mode.");
+#ifdef DEBUG
+    _printf("Declared queue with name `%s`.\n", _stringify_bytes(q_.name_bytes));
+#endif
 
-  consumer_tag = _amqp_bytes_malloc_dup((*consume_ok_r).consumer_tag);
-  finalize with
-    _amqp_bytes_free(consumer_tag);
-  end
-  if consumer_tag.bytes == null then
-    _die("Out of memory while copying queue name");
-  end
+    emit ok_;
 
-  await FOREVER;
+    // Delete queue upon termination...
+    do finalize with
+        _amqp_queue_delete(&&channel.conn.state, channel.id, name_bytes, false, false);
+        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Deleting queue.");
+#ifdef DEBUG
+        _printf("Deleted queue with name `%s`.\n", _stringify_bytes(q_.name_bytes));
+#endif
+    end
+
+    await FOREVER;
 end
 
-#if 0 
+#if queue_test
 // little test
-input void TEST_CLOSE;
-par/or do
-  var Connection c with
-    this.hostname = [] .. "localhost";
-    this.port = 5672;
-    this.vhost = [] .. "/";
-    this.channel_max = 0;
-    this.frame_max = 131072;
-    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-    this.user = [] .. "guest";
-    this.password = [] .. "guest";
-  end;
+var& Connection conn;
+event& void conn_ok;
 
-  watching c do
-    var Channel ch with
-      this.conn = &c;
-    end;
-    _printf("Channel ID: %d\n", ch.id);
+spawn New_Connection(_) -> (&conn, &conn_ok);
+await conn_ok;
 
-    watching ch do
-      var Queue q with
-        this.channel = &ch;
-        this.name = [].."queue";
-        this.passive = false;
-        this.durable = false;
-        this.exclusive = false;
-        this.auto_delete = true;
-        this.create_arguments = _amqp_empty_table;
+var& Channel channel;
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;
 
-        this.no_local = false;
-        this.no_ack = true;
-        this.consume_exclusive = false;
-        this.consume_arguments = _amqp_empty_table;
-      end;
-      _printf("Created Queue with name '%s' and ctag '%s'.\n", _stringify_bytes(q.name_bytes), _stringify_bytes(q.consumer_tag));
+var& Queue q;
+event& void q_ok1;
+spawn New_Queue(&channel, QueueContext("test_queue",_,_,_,_,_)) -> (&q, &q_ok1);
+await q_ok1;
 
-      var Queue q2 with
-        this.channel = &ch;
-        this.name = [].."";
-        this.passive = false;
-        this.durable = false;
-        this.exclusive = false;
-        this.auto_delete = true;
-        this.create_arguments = _amqp_empty_table;
+var& Queue q2;
+event& void q_ok2;
+spawn New_Queue(&channel, QueueContext("",_,_,_,_,_)) -> (&q2, &q_ok2);
+await q_ok2;
 
-        this.no_local = false;
-        this.no_ack = true;
-        this.consume_exclusive = false;
-        this.consume_arguments = _amqp_empty_table;
-      end;
-      _printf("Created Queue with name '%s' and ctag '%s'.\n", _stringify_bytes(q2.name_bytes), _stringify_bytes(q2.consumer_tag));
+var& Queue q_null_name;
+event& void q_ok3;
+spawn New_Queue(&channel, _) -> (&q_null_name, &q_ok3);
+await q_ok3;
 
-
-      await TEST_CLOSE;
-    end
-  end
-with
-  async do
-    emit TEST_CLOSE;
-  end
-end
+await 2s;
 
 escape 0;
 #endif

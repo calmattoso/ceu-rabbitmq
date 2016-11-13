@@ -1,43 +1,16 @@
 #ifndef _HANDLER_CEU
 #define _HANDLER_CEU
 
-#include "queue.ceu"
+#include <c.ceu>
+#include <sdl/sdl.ceu>
 
-native/pre do
-  ##include <stdlib.h>
-  ##include <stdio.h>
-  ##include <string.h>
-  ##include <stdint.h>
-  
-  ##include <amqp_tcp_socket.h>
-  ##include <amqp.h>
-  ##include <amqp_framing.h>
+#include "amqp_base.ceu"
+#include "envelope.ceu"
 
-  ##include "utils.c"
-end
-
-native @nohold _amqp_dump;
-native @nohold _amqp_destroy_envelope; // immediately destroys the internal message buffer
-native @plain  _amqp_envelope_t;
-
-class Handler with
-  var _amqp_envelope_t message;
-  pool Queue[]& queues;
-do
-  [[ print('antes', @((int)message.message.body.len)) ]];
-  await 1s;
-  _printf("Received message for ctag '%s'\n", _stringify_bytes(message.consumer_tag));
-  _amqp_dump(message.message.body.bytes, message.message.body.len);
-  [[ print 'depois' ]];
-
-#if 0
-  [[ dofile 't.lua' ]];
-  var int len = [[ #T ]];
-  loop i in len do
-    [[ print(T[@i+1]) ]];
-  end
-  [[ print(T.id) ]];
-#endif
+code/await Handler (var Envelope env) -> void do
+    _printf("Received message for ctag `%s`.\n", 
+            _stringify_bytes(env.contents.consumer_tag));
+    _amqp_dump(env.contents.message.body.bytes, env.contents.message.body.len);
 end
 
 #endif

@@ -1,0 +1,14 @@
+#ifndef _ENVELOPE_CEU
+#define _ENVELOPE_CEU
+
+#include <c.ceu>
+#include <sdl/sdl.ceu>
+
+#include "amqp_base.ceu"
+
+data Envelope with
+    var _amqp_envelope_t contents;
+    var _plain_string    handler_tag;
+end
+
+#endif

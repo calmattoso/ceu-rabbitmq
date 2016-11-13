@@ -1,93 +1,115 @@
 #ifndef _CHANNEL_CEU
 #define _CHANNEL_CEU
 
+#include <c.ceu>
+#include <sdl/sdl.ceu>
+
+#include "amqp_base.ceu"
 #include "connection.ceu"
+#include "envelope.ceu"
+#include "handler.ceu"
 
-class Channel with
-  var Connection& conn;
-output:
-  var int id;
-do
-  native do
-    ##include <stdlib.h>
-    ##include <stdio.h>
-    ##include <string.h>
-    ##include <stdint.h>
-    
-    ##include <amqp_tcp_socket.h>
-    ##include <amqp.h>
-    ##include <amqp_framing.h>
+native/nohold
+    _amqp_channel_open,
+    _amqp_channel_close,
+    _amqp_consume_message,
+    _amqp_destroy_envelope,
+;
 
-    ##include "utils.c"
-  end
-
-  // prototype hacks
-  native @nohold  _amqp_get_rpc_reply;
-  native @nohold  _amqp_channel_open;
-  native @nohold  _amqp_channel_close;
-  native @plain _amqp_connection_state_t_;
-
-  // protected variables
-  this.id = conn.next_channel_id();
-
-  // body
-  _amqp_channel_open(&&conn.state, id);
-
-  _die_on_amqp_error(_amqp_get_rpc_reply(&&conn.state), "Opening channel");
-  finalize with
-    _die_on_amqp_error(_amqp_channel_close(&&conn.state, id, _AMQP_REPLY_SUCCESS), "Closing channel");
-  end
-  await FOREVER;
+data Channel with
+    var& Connection conn;
+    var  int        id;
 end
 
-#if 0
-// little test
-input void TEST_CLOSE;
-par/or do
-  var Connection c with
-    this.hostname = [] .. "localhost";
-    this.port = 5672;
-    this.vhost = [] .. "/";
-    this.channel_max = 0;
-    this.frame_max = 131072;
-    this.sasl_method = _AMQP_SASL_METHOD_PLAIN;
-    this.user = [] .. "guest";
-    this.password = [] .. "guest";
-  end;
+code/await LowHandler (var Envelope env) -> void
+do
+  do finalize with
+    _amqp_destroy_envelope(&&env.contents);
+#ifdef DEBUG
+    _printf("Destroyed message envelope with consumer tag `%s`.\n", 
+            _stringify_bytes(env.contents.consumer_tag));
+#endif
+  end
+  spawn Handler (env);
+end
 
-  watching c do
-    pool Channel[5] chs; //segfault
+code/await New_Channel (var& Connection conn) 
+                            -> (var& Channel ch, event& void ok)
+                                -> FOREVER 
+do
+    // export channel
+    var int channel_id = call Next_Channel_Id(&conn);
+    var Channel ch_ = val Channel(&conn, channel_id);
+    ch = &ch_;
 
-    #if 1  
-    var Channel ch with
-      this.conn = &c;
-    end;
-    _printf("Channel ID: %d\n", ch.id);
-
-    var Channel ch2 with
-      this.conn = &c;
-    end;
-    _printf("Channel ID: %d\n", ch2.id);
-    #endif
-
-    #if 1
-    // Segfault:
-    // =========
-    loop i in 5 do
-      var Channel&&? ch =
-        spawn Channel in chs with
-          this.conn = &c;
-        end;
-      _printf("Channel ID: %d\n", ch!:id);
+#ifdef DEBUG
+    _printf("Opening channel...\n");
+#endif
+    event void ok_;
+    ok = &ok_;
+    await async/thread(ch_) do
+        _amqp_channel_open(&&ch_.conn.state, ch_.id);
     end
-    #endif
+    _die_on_amqp_error(_amqp_get_rpc_reply(&&ch_.conn.state), "Opening channel");
+#ifdef DEBUG
+    _printf("Opened channel with ID %d!\n", ch_.id);
+#endif
+    emit ok_;
+   
+    do finalize with
+        _die_on_amqp_error(_amqp_channel_close(&&ch_.conn.state, ch_.id, _AMQP_REPLY_SUCCESS), "Closing channel");
+#ifdef DEBUG
+        _printf("Closed channel!\n");
+#endif  
+    end
 
-    await TEST_CLOSE;
-  end
+    await FOREVER;
+end
+
+code/await Channel_Consume(var& Channel ch, pool&[] LowHandler handlers)
+                                -> FOREVER
+do
+    loop do
+#ifdef DEBUG
+        _printf("Consuming...\n");
+#endif
+        var _amqp_envelope_t envelope = _;   
+
+        // Get messages received by the channel and dispatch to handlers...
+        await async/thread(ch, envelope) do
+            // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
+            //                      struct timeval *timeout, AMQP_UNUSED int flags)
+        
+            _amqp_consume_message(&&ch.conn.state, &&envelope, null, 0);
+        end
+#ifdef DEBUG
+        _printf("Received msg!\n");
+#endif
+        spawn LowHandler(Envelope(envelope,
+                         _stringify_bytes(envelope.consumer_tag))) 
+        in handlers;
+    end
+end
+
+pool[] LowHandler default_handlers;
+
+#ifdef channel_test
+par/or do
+    var& Connection conn;
+    event& void conn_ok;
+
+    spawn New_Connection(_) -> (&conn, &conn_ok);
+    await conn_ok;
+
+    var& Channel ch;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&ch, &ch_ok);
+    await ch_ok;
+
+    await Channel_Consume(&ch, &default_handlers);
 with
-  async do
-    emit TEST_CLOSE;
-  end
+    await 2s;
+    _printf("Test over...\n");
 end
 
 escape 0;

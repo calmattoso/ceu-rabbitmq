@@ -1,45 +1,21 @@
-#include "connection.ceu"
-#include "channel.ceu"
-#include "exchange.ceu"
-#include "publish.ceu"
+#include <c.ceu>
+#include <sdl/sdl.ceu>
 
-watching default_connection do
-  var Channel ch with
-    this.conn = &default_connection;
-  end;
-  _printf("Channel ID: %d\n", ch.id);
+#include <connection.ceu>
+#include <channel.ceu>
+#include <publish.ceu>
 
-  watching ch do
-    var Exchange amq_direct with
-      this.channel = &ch;
-      this.name = [].."amq.direct";
-      this.type = [].."direct";
-      this.passive = false;
-      this.durable = true;
-      this.auto_delete = false;
-      this.internal = false;
-      this.arguments = _amqp_empty_table;
-    end;
-    _printf("Using default exchange.\n");
+var& Connection conn;
+event& void conn_ok;
+spawn New_Connection(_) -> (&conn, &conn_ok);
+await conn_ok;
 
-    watching amq_direct do
-      var _amqp_basic_properties_t props = _amqp_basic_properties_t();
-      props._flags = _AMQP_BASIC_CONTENT_TYPE_FLAG | 
-                     _AMQP_BASIC_DELIVERY_MODE_FLAG;
-      props.content_type = _amqp_cstring_bytes("text/plain");
-      props.delivery_mode = 2; /* persistent delivery mode */        
-      do Publish with
-        this.channel = &ch;
-        this.exchange = &amq_direct;
-        this.routing_key = [].."test2";
-        this.body = [].."Hello, from Ceu!";
-        this.mandatory = false;
-        this.immediate = false;
-        this.properties = props;
-      end;
-      _printf("Published message!\n");
-    end
-  end
-end
+var& Channel channel;
+event& void ch_ok;
+spawn New_Channel(&conn) -> (&channel, &ch_ok);
+await ch_ok;
 
+await Publish(&channel, &amq_default, 
+              PublishContext("hello", "Hello from Ceu!",_,_,default_props));
 escape 0;
+
