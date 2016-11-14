@@ -26,25 +26,22 @@ data SubscribeContext with
     var _amqp_table_t arguments = _amqp_empty_table;
 end
 
+#define RMQ_Subscribe(CH, Q, CTX, TAG, S_OK) spawn Subscribe_Queue(&CH, &Q, CTX, TAG) -> (&S_OK); await S_OK
+
 code/await Subscribe_Queue (var& Channel channel, var& Queue queue, 
-                            var SubscribeContext ctx, var _plain_string consumer_tag) 
-                                -> (var& _amqp_bytes_t consumer_tag_bytes, event& void ok)
+                            var SubscribeContext ctx, var int handler_tag) 
+                                -> (event& void ok)
                                     -> FOREVER
 do
     event void ok_;
     ok = &ok_;
-
-    var _amqp_bytes_t consumer_tag_bytes_ = _amqp_empty_bytes;
-    if consumer_tag != null and _strlen(consumer_tag) > 0 then
-        consumer_tag_bytes_ = _amqp_cstring_bytes(consumer_tag);
-    end
-    consumer_tag_bytes = &consumer_tag_bytes_;
 
     // amqp_basic_consume_ok_t *
     // AMQP_CALL amqp_basic_consume(amqp_connection_state_t state, amqp_channel_t channel,
     //                              amqp_bytes_t queue, amqp_bytes_t consumer_tag, 
     //                              amqp_boolean_t no_local, amqp_boolean_t no_ack,
     //                              amqp_boolean_t exclusive, amqp_table_t arguments)
+    var _amqp_bytes_t consumer_tag_bytes_ = _amqp_empty_bytes;
     await async/thread(channel, ctx, queue, consumer_tag_bytes_) do
         var _amqp_basic_consume_ok_t&& consume_ok_r = 
             _amqp_basic_consume(&&channel.conn.state, channel.id, queue.name_bytes, 
@@ -54,14 +51,23 @@ do
         _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), 
                            "Failed to subscribe to queue.");
         
-        if consumer_tag_bytes_.len == 0 then
-            consumer_tag_bytes_ = consume_ok_r:consumer_tag;
-        end  
+        consumer_tag_bytes_ = consume_ok_r:consumer_tag;  
     end
+
+    var _plain_string ctag_str = _stringify_bytes(consumer_tag_bytes_);
+    vector[] byte ctag_ceu_str = [];
+    C2CEU_STR(ctag_str, ctag_ceu_str);
+    _free(ctag_str);
+
+    [[
+        rmq_ctag_htag[@ctag_ceu_str] = @handler_tag
+    ]]
+
 #ifdef DEBUG
-    _printf("Subscribed to queue `%s` with consumer_tag `%s`.\n", 
+    _printf("Subscribed to queue `%s` with ctag `%s`and mapped it to htag `%d`.\n", 
             _stringify_bytes(queue.name_bytes),
-            _stringify_bytes(consumer_tag_bytes_));
+            _stringify_bytes(consumer_tag_bytes_),
+            handler_tag);
 #endif 
 
     emit ok_;
@@ -71,10 +77,14 @@ do
                            consumer_tag_bytes_);
         _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state),
                            "Failed to unsubscribe from queue.");
+        [[
+            rmq_ctag_htag[@ctag_ceu_str] = nil
+        ]]
 #ifdef DEBUG
-        _printf("Unsubscribed from queue `%s` with consumer_tag `%s`.\n", 
+        _printf("Unsubscribed from queue `%s` with ctag `%s`and unmapped it from htag `%d`.\n", 
                 _stringify_bytes(queue.name_bytes),
-                _stringify_bytes(consumer_tag_bytes_));
+                _stringify_bytes(consumer_tag_bytes_),
+                handler_tag);
 #endif 
     end
     await FOREVER;
@@ -83,30 +93,21 @@ end
 #ifdef q_subscribe_test
 var& Connection conn;
 event& void conn_ok;
-
-spawn New_Connection(ConnectionContext(_,_,_,_,_,_,_,_)) -> (&conn, &conn_ok);
-await conn_ok;
+RMQ_Connection(_, conn, conn_ok);
 
 var& Channel channel;
 event& void ch_ok;
-spawn New_Channel(&conn) -> (&channel, &ch_ok);
-await ch_ok;
+RMQ_Channel(conn, channel, ch_ok);
 
 var& Queue queue;
 event& void q_ok;
-spawn New_Queue(&channel, QueueContext("hello",_,_,_,_,_amqp_empty_table)) 
-        -> (&queue, &q_ok);
-await q_ok;
+RMQ_Queue(channel, QueueContext("hello",_,_,_,_,_amqp_empty_table), queue, q_ok);
 
 event& void bind_ok;
-spawn Bind_Queue(&channel, &queue, &amq_direct, "hello", _amqp_empty_table) 
-        -> (&bind_ok);
-await bind_ok;
+RMQ_Bind(channel, queue, amq_direct, "hello", _amqp_empty_table, bind_ok);
 
-var& _amqp_bytes_t consumer_tag;
 event& void qsub_ok;
-spawn Subscribe_Queue(&channel, &queue, _, null) -> (&consumer_tag, &qsub_ok);
-await qsub_ok;
+RMQ_Subscribe(channel, queue, _, 0, qsub_ok);
 
 await 1s;
 
