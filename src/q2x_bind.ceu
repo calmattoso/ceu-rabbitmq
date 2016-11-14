@@ -14,6 +14,8 @@ native/nohold
     _amqp_queue_unbind,
 ;
 
+#define RMQ_Bind(CH, Q, EX, KEY, ARGS, BIND_OK) spawn Bind_Queue(&CH, &Q, &EX, KEY, ARGS) -> (&BIND_OK); await BIND_OK
+
 code/await Bind_Queue (var& Channel       channel, 
                      var& Queue         queue, 
                      var& Exchange      exchange, 
@@ -61,24 +63,20 @@ end
 par/or do
     var& Connection conn;
     event& void conn_ok;
-
-    spawn New_Connection(_) -> (&conn, &conn_ok);
-    await conn_ok;
+    RMQ_Connection(_, conn, conn_ok);
 
     var& Channel channel;
     event& void ch_ok;
-    spawn New_Channel(&conn) -> (&channel, &ch_ok);
-    await ch_ok;
+    RMQ_Channel(conn, channel, ch_ok);
 
     var& Queue queue;
     event& void q_ok;
-    spawn New_Queue(&channel, _) -> (&queue, &q_ok);
-    await q_ok;
+    RMQ_Queue(channel, _, queue, q_ok);
 
     event& void bind_ok;
-    spawn Bind_Queue(&channel, &queue, &amq_direct, "baloney", _amqp_empty_table) 
-            -> (&bind_ok);
-    await bind_ok;
+    RMQ_Bind(channel, queue, amq_direct, "baloney", _amqp_empty_table, bind_ok);
+
+    await FOREVER;
 with
     await 2s;
 end

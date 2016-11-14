@@ -34,6 +34,8 @@ data ExchangeContext with
     var _amqp_table_t arguments   = _amqp_empty_table;
 end
 
+#define RMQ_Exchange(CH, CTX, EX, EX_OK) spawn New_Exchange(&CH, CTX) -> (&EX, &EX_OK); await EX_OK 
+
 code/await New_Exchange (var& Channel channel, var ExchangeContext ctx)
                             -> (var& Exchange ex, event& void ok)
                                 -> FOREVER
@@ -101,33 +103,25 @@ var Exchange amq_default = val Exchange(_amqp_cstring_bytes(AMQ_DEFAULT)),
 #ifdef exchange_test
 var& Connection conn;
 event& void conn_ok;
-
-spawn New_Connection(_) -> (&conn, &conn_ok);
-await conn_ok;
+RMQ_Connection(_, conn, conn_ok);
 
 var& Channel channel;
 event& void ch_ok;
-spawn New_Channel(&conn) -> (&channel, &ch_ok);
-await ch_ok;
+RMQ_Channel(conn, channel, ch_ok);
     
 var& Exchange e;
 event& void ex_ok1;
-spawn New_Exchange(&channel, ExchangeContext("test_exchange_topic", "topic",
-                                             _,_,_,_,_)) 
-                      -> (&e, &ex_ok1); 
-await ex_ok1;
+RMQ_Exchange(channel, ExchangeContext("test_exchange_topic", "topic",_,_,_,_,_), e, ex_ok1);
 
 var& Exchange e2;
 event& void ex_ok2;
-spawn New_Exchange(&channel, ExchangeContext("test_exchange_direct",_,_,_,_,_,_)) 
-                      -> (&e2, &ex_ok2); 
-await ex_ok2;
+RMQ_Exchange(channel, ExchangeContext("test_exchange_direct",_,_,_,_,_,_), e2, ex_ok2);
 
 // Below shows the function "creates" the default exchange correctly. However,
 // the default instantiated exchanges should be used instead.
 var& Exchange user_amq_def;
 event& void ex_ok3;
-spawn New_Exchange(&channel, _) -> (&user_amq_def, &ex_ok3);
+spawn New_Exchange(&channel, _) -> (&user_amq_def, &ex_ok3); // no await here
 
 await 2s;
 

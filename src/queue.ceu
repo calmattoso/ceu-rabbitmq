@@ -30,6 +30,8 @@ data QueueContext with
     var _amqp_table_t arguments   = _amqp_empty_table;
 end
 
+#define RMQ_Queue(CH, Q_CTX, Q, Q_OK) spawn New_Queue(&CH, Q_CTX) -> (&Q, &Q_OK); await Q_OK
+
 code/await New_Queue (var& Channel channel, var QueueContext ctx)
                         -> (var& Queue q, event& void ok)
                             -> FOREVER
@@ -43,6 +45,8 @@ do
     else
         name_bytes = _amqp_empty_bytes;
     end
+
+    //_printf("%d %d %d %d\n", ctx.passive, ctx.durable, ctx.exclusive, ctx.auto_delete);
 
     // Create the queue
     // amqp_queue_declare(amqp_connection_state_t state, amqp_channel_t channel,
@@ -86,29 +90,23 @@ end
 // little test
 var& Connection conn;
 event& void conn_ok;
-
-spawn New_Connection(_) -> (&conn, &conn_ok);
-await conn_ok;
+RMQ_Connection(_, conn, conn_ok);
 
 var& Channel channel;
 event& void ch_ok;
-spawn New_Channel(&conn) -> (&channel, &ch_ok);
-await ch_ok;
+RMQ_Channel(conn, channel, ch_ok);
 
 var& Queue q;
 event& void q_ok1;
-spawn New_Queue(&channel, QueueContext("test_queue",_,_,_,_,_)) -> (&q, &q_ok1);
-await q_ok1;
+RMQ_Queue(channel, QueueContext("test_queue",_,_,_,_,_), q, q_ok1);
 
 var& Queue q2;
 event& void q_ok2;
-spawn New_Queue(&channel, QueueContext("",_,_,_,_,_)) -> (&q2, &q_ok2);
-await q_ok2;
+RMQ_Queue(channel, QueueContext("",_,_,_,false,_), q2, q_ok2);
 
 var& Queue q_null_name;
 event& void q_ok3;
-spawn New_Queue(&channel, _) -> (&q_null_name, &q_ok3);
-await q_ok3;
+RMQ_Queue(channel, _, q_null_name, q_ok3);
 
 await 2s;
 

@@ -24,6 +24,8 @@ native
     _amqp_socket_t,
 ;
 
+#define RMQ_Connection(CTX, CONN, CONN_OK) spawn New_Connection(CTX) -> (&CONN, &CONN_OK); await CONN_OK
+
 data Connection with
     var& _amqp_connection_state_t_ state;
     var int channel_id;
@@ -103,9 +105,7 @@ var& Connection conn;
 event& void conn_ok;
 
 // little test
-var ConnectionContext c = _;
-spawn New_Connection(c) -> (&conn, &conn_ok);
-await conn_ok;
+RMQ_Connection(_, conn, conn_ok);
 
 var int channel_id = call Next_Channel_Id(&conn);
 _printf("Cur. Channel ID: %d\nNext Channel ID: %d\n", channel_id, conn.channel_id);

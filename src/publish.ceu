@@ -9,10 +9,6 @@
 #include "channel.ceu"
 #include "exchange.ceu"
 
-native/pure
-    _new_props,
-;
-
 native/plain
     _AMQP_BASIC_CONTENT_TYPE_FLAG,
     _AMQP_BASIC_DELIVERY_MODE_FLAG,
@@ -34,6 +30,8 @@ data PublishContext with
     var  bool                     immediate  = false;
     var  _amqp_basic_properties_t properties;
 end
+
+#define RMQ_Publish(CH, EX, CTX) await Publish(&CH, &EX, CTX)
 
 code/await Publish (var& Channel channel, var& Exchange exchange, 
                     var PublishContext ctx) 
@@ -65,23 +63,23 @@ end
 // little test
 var& Connection conn;
 event& void conn_ok;
-spawn New_Connection(_) -> (&conn, &conn_ok);
-await conn_ok;
+RMQ_Connection(_, conn, conn_ok);
 
 var& Channel channel;
 event& void ch_ok;
-spawn New_Channel(&conn) -> (&channel, &ch_ok);
-await ch_ok;    
+RMQ_Channel(conn, channel, ch_ok);    
 
 par/or do
-   loop do
-        await Publish(&channel, &amq_default, 
-                      PublishContext("hello", "Hello from Ceu!",
-                                     _,_,default_props));
-        await 500ms;    
+    vector[50] byte msg;
+
+    var int i;
+    loop i do
+        _sprintf((&&msg[0] as _char&&), "Hello from Ceu! %d", i);
+        RMQ_Publish(channel, amq_default, PublishContext("hello", (&&msg[0] as _char&&),_,_,_));
+        await 1us;    
     end
 with    
-    await (2.1)s;
+    await (100)s;
 end
 
 escape 0;
