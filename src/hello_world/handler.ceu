@@ -1,31 +1,17 @@
 #ifndef _HANDLER_CEU
 #define _HANDLER_CEU
 
-#include "queue.ceu"
+#include <c.ceu>
+#include <sdl/sdl.ceu>
 
-native/pre do
-  ##include <stdlib.h>
-  ##include <stdio.h>
-  ##include <string.h>
-  ##include <stdint.h>
-  
-  ##include <amqp_tcp_socket.h>
-  ##include <amqp.h>
-  ##include <amqp_framing.h>
+#include <amqp_base.ceu>
+#include <envelope.ceu>
 
-  ##include "utils.c"
-end
-
-native @nohold _amqp_dump;
-native @nohold _amqp_destroy_envelope; // immediately destroys the internal message buffer
-native @plain  _amqp_envelope_t;
-
-class Handler with
-  var _amqp_envelope_t message;
-  pool Queue[]& queues;
-do
-  _printf("Received message for ctag '%s'\n", _stringify_bytes(message.consumer_tag));
-  _amqp_dump(message.message.body.bytes, message.message.body.len);
+code/await Handler (var Envelope env) -> void do
+    _printf("#==============================================================================#\n");
+    _printf("\tHOLA! Received message for handler with tag `%d`.\n", env.handler_tag);
+    _printf("\tMsg: %s\n", _stringify_bytes(env.contents.message.body));
+    _printf("#==============================================================================#\n\n");
 end
 
 #endif

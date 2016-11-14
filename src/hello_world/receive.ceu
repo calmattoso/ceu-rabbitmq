@@ -1,6 +1,7 @@
 #include <c.ceu>
 #include <sdl/sdl.ceu>
 
+#include "handler.ceu"
 #include <connection.ceu>
 #include <channel.ceu>
 #include <queue.ceu>
@@ -8,26 +9,22 @@
 
 var& Connection conn;
 event& void conn_ok;
-spawn New_Connection(_) -> (&conn, &conn_ok);
-await conn_ok;
+RMQ_Connection(_, conn, conn_ok);
 
 var& Channel channel;
 event& void ch_ok;
-spawn New_Channel(&conn) -> (&channel, &ch_ok);
-await ch_ok;
+RMQ_Channel(conn, channel, ch_ok);
 
 var& Queue queue;
 event& void q_ok;
-var QueueContext ctx = val QueueContext("hello",false,false,false,true,_amqp_empty_table);
-spawn New_Queue(&channel, ctx) 
-        -> (&queue, &q_ok);
-await q_ok;
+RMQ_Queue(channel, QueueContext("hello",_,_,_,_,_amqp_empty_table), queue, q_ok);
 
-var& _amqp_bytes_t consumer_tag;
 event& void qsub_ok;
-spawn Subscribe_Queue(&channel, &queue, _, null) -> (&consumer_tag, &qsub_ok);
-await qsub_ok;
+RMQ_Subscribe(channel, queue, _, 10, qsub_ok);
 
 // Setup is done, so activate consumption
-await Channel_Consume(&channel, &default_handlers);
+RMQ_Consume(channel, default_handlers);
 
+_printf("Consuming messages from default exchange with key `hello`...\n\n");
+
+await FOREVER;
