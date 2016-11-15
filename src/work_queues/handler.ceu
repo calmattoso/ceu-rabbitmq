@@ -1,0 +1,16 @@
+#ifndef _HANDLER_CEU
+#define _HANDLER_CEU
+
+#include <c.ceu>
+#include <uv/uv.ceu>
+#include <amqp_base.ceu>
+#include <envelope.ceu>
+
+code/await Handler (var Envelope env) -> void do
+    _printf("#==============================================================================#\n");
+    _printf("\tHOLA! Received message for handler with tag `%d`.\n", env.handler_tag);
+    _printf("\tMsg: %s\n", _stringify_bytes(env.contents.message.body));
+    _printf("#==============================================================================#\n\n");
+end
+
+#endif

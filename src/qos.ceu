@@ -1,0 +1,79 @@
+#ifndef _QOS_CEU
+#define _QOS_CEU
+
+#include <c.ceu>
+#include <uv/uv.ceu>
+
+#include "amqp_base.ceu"
+#include "connection.ceu"
+#include "channel.ceu"
+
+#define AMQP_CONSUME_MAX_PREFETCH_COUNT 65535
+native/nohold
+    _amqp_basic_qos,
+;
+
+data QosContext with
+    var int  prefetch_count = AMQP_CONSUME_MAX_PREFETCH_COUNT;
+    var bool global         = false;
+end
+
+code/await Qos_Release(var& Channel channel) -> void
+do
+    await async/thread(channel) do
+        _amqp_basic_qos(&&channel.conn.state, channel.id, 0, AMQP_CONSUME_MAX_PREFETCH_COUNT, false);
+    #ifdef DEBUG
+        _printf("Restored QOS to default values...\n");  
+    #endif
+    end
+end
+pool[] Qos_Release rmq_qos_release;
+
+#define RMQ_Qos(CH, CTX, QOS_OK) spawn Qos(&CH, CTX, &rmq_qos_release) -> (&QOS_OK); await QOS_OK;
+code/await Qos(var& Channel channel, var QosContext ctx, pool&[] Qos_Release qos_release) 
+                -> (event& void ok)                
+                    -> FOREVER
+do
+    event void ok_;
+    ok = &ok_;
+
+    var int ret = 1;
+    await async/thread(channel, ctx, ret) do
+        ret = _amqp_basic_qos(&&channel.conn.state, channel.id, 0, ctx.prefetch_count, ctx.global);
+    end
+    
+    if ret == 0 then
+        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "basic.qos");
+    end
+#ifdef DEBUG
+    _printf("Set `prefetch` to %d with `global` == %d\n", ctx.prefetch_count, ctx.global);  
+#endif
+
+    do finalize with
+        //_amqp_basic_qos(&&channel.conn.state, channel.id, 0, AMQP_CONSUME_MAX_PREFETCH_COUNT, false);
+        spawn Qos_Release(&channel) in qos_release;
+    end
+    
+    emit ok_;
+    await FOREVER;
+end
+
+#ifdef qos_test
+var& Connection conn;
+event& void conn_ok;
+RMQ_Connection(_, conn, conn_ok);
+
+var& Channel channel;
+event& void ch_ok;
+RMQ_Channel(conn, channel, ch_ok);
+
+event& void qos_ok;
+RMQ_Qos(channel, QosContext(1,true), qos_ok);
+
+await 1s;
+
+escape 0;
+#endif
+#endif
+
+
