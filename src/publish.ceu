@@ -2,7 +2,7 @@
 #define _PUBLISH_CEU
 
 #include <c.ceu>
-#include <sdl/sdl.ceu>
+#include <uv/uv.ceu>
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
@@ -76,10 +76,10 @@ par/or do
     loop i do
         _sprintf((&&msg[0] as _char&&), "Hello from Ceu! %d", i);
         RMQ_Publish(channel, amq_default, PublishContext("hello", (&&msg[0] as _char&&),_,_,_));
-        await 1us;    
+        await 1ms;    
     end
 with    
-    await (100)s;
+    await 10s;
 end
 
 escape 0;
