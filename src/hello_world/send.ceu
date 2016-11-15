@@ -1,5 +1,5 @@
 #include <c.ceu>
-#include <sdl/sdl.ceu>
+#include <uv/uv.ceu>
 
 #include <connection.ceu>
 #include <channel.ceu>
