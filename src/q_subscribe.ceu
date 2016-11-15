@@ -2,7 +2,7 @@
 #define _Q_SUBSCRIBE_CEU
 
 #include <c.ceu>
-#include <sdl/sdl.ceu>
+#include <uv/uv.ceu>
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
@@ -61,6 +61,7 @@ do
 
     [[
         rmq_ctag_htag[@ctag_ceu_str] = @handler_tag
+        rmq_ctag_ack[@ctag_ceu_str]  = @ctx.no_ack
     ]]
 
 #ifdef DEBUG
@@ -79,6 +80,7 @@ do
                            "Failed to unsubscribe from queue.");
         [[
             rmq_ctag_htag[@ctag_ceu_str] = nil
+            rmq_ctag_ack[@ctag_ceu_str]  = nil
         ]]
 #ifdef DEBUG
         _printf("Unsubscribed from queue `%s` with ctag `%s`and unmapped it from htag `%d`.\n", 
