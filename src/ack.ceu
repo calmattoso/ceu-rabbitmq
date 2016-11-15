@@ -1,0 +1,21 @@
+#ifndef _ACK_CEU
+#define _ACK_CEU
+
+#include <c.ceu>
+#include <uv/uv.ceu>
+#include "amqp_base.ceu"
+#include "channel.ceu"
+
+native/nohold
+    _amqp_basic_ack,
+;
+
+#define RMQ_Ack(CH, ENV) await Ack(&CH, &ENV);
+code/await Ack(var& Channel channel, var& Envelope envelope) -> void 
+do
+    await async/thread(channel, envelope) do
+        _amqp_basic_ack(&&channel.conn.state, channel.id, envelope.contents.delivery_tag, false);
+    end 
+end
+
+#endif

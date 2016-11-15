@@ -2,7 +2,7 @@
 #define _CHANNEL_CEU
 
 #include <c.ceu>
-#include <sdl/sdl.ceu>
+#include <uv/uv.ceu>
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
@@ -21,20 +21,33 @@ data Channel with
     var  int        id;
 end
 
-code/await LowHandler (var Envelope env) -> void
+#include "ack.ceu"
+code/await LowHandler (var& Channel channel, var Envelope env) -> void
 do
+    var _plain_string ctag_str = _stringify_bytes(env.contents.consumer_tag);
+    vector[] byte ctag = [].."";
+    C2CEU_STR(ctag_str, ctag);
+    _free(ctag_str);
+
     do finalize with
 #ifdef DEBUG
-        _printf("Destroyed message envelope with consumer tag `%s`.\n", 
-                _stringify_bytes(env.contents.consumer_tag));
+        _printf("Destroyed message envelope with consumer tag `%s`.\n", (&&ctag[0] as _char&&));
 #endif
         _amqp_destroy_envelope(&&env.contents);
     end
     await Handler (env);
+
+    // Acknowledge receipt of message is necessary
+    var bool no_ack = [[ rmq_ctag_ack[@ctag] ]];
+    if not no_ack then
+        RMQ_Ack(channel, env);
+#ifdef DEBUG
+        _printf("Acknowledged receipt of envelope with consumer tag `%s`.\n", (&&ctag[0] as _char&&));
+#endif
+    end
 end
 
 #define RMQ_Channel(CONN, CH, CH_OK) spawn New_Channel(&CONN) -> (&CH, &CH_OK); await CH_OK
-
 code/await New_Channel (var& Connection conn) 
                             -> (var& Channel ch, event& void ok)
                                 -> FOREVER 
@@ -69,7 +82,6 @@ do
 end
 
 #define RMQ_Consume(CH, HANDLERS) spawn Channel_Consume(&CH, &HANDLERS)
-
 code/await Channel_Consume(var& Channel ch, pool&[] LowHandler handlers)
                                 -> FOREVER
 do
@@ -90,13 +102,12 @@ do
 #endif
         
         var _plain_string ctag_str = _stringify_bytes(envelope.consumer_tag);
-        vector[] byte ctag_ceu_str = [];
+        vector[] byte ctag_ceu_str = [].."";
         C2CEU_STR(ctag_str, ctag_ceu_str);
         _free(ctag_str);
-
         var int htag = [[ rmq_ctag_htag[@ctag_ceu_str] ]];
-        
-        spawn LowHandler(Envelope(envelope, htag)) in handlers;
+
+        spawn LowHandler(&ch, Envelope(envelope, htag)) in handlers;
     end
 end
 

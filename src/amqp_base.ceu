@@ -1,10 +1,11 @@
 #ifndef _AMQP_BASE_CEU
 #define _AMQP_BASE_CEU
 
-#define C2CEU_STR(C_STR, CEU_STR) await async(C_STR, CEU_STR) do var int i, len = _strlen(C_STR); loop i in [0->len[ do CEU_STR = CEU_STR .. [C_STR[i]]; end end
+#define C2CEU_STR(C_STR, CEU_STR) var int i, len = _strlen(C_STR); loop i in [0->len[ do CEU_STR = CEU_STR .. [C_STR[i]]; end
 
 [[
     rmq_ctag_htag = {}
+    rmq_ctag_ack  = {}
 ]]
 
 native/pre do
@@ -35,7 +36,6 @@ native/nohold
     _die_on_amqp_error,
     _die_on_error,
     _stringify_bytes,
-
 ;
 
 native

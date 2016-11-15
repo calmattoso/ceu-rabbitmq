@@ -2,7 +2,7 @@
 #define _ENVELOPE_CEU
 
 #include <c.ceu>
-#include <sdl/sdl.ceu>
+#include <uv/uv.ceu>
 
 #include "amqp_base.ceu"
 
