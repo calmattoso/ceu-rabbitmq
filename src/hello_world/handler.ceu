@@ -4,9 +4,10 @@
 #include <c.ceu>
 #include <uv/uv.ceu>
 #include <amqp_base.ceu>
+#include <channel_data.ceu>
 #include <envelope.ceu>
 
-code/await Handler (var Envelope env) -> void do
+code/await Handler (var& Channel channel, var Envelope env) -> void do
     _printf("#==============================================================================#\n");
     _printf("\tHOLA! Received message for handler with tag `%d`.\n", env.handler_tag);
     _printf("\tMsg: %s\n", _stringify_bytes(env.contents.message.body));

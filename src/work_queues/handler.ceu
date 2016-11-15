@@ -5,6 +5,7 @@
 #include <uv/uv.ceu>
 #include <amqp_base.ceu>
 #include <envelope.ceu>
+#include <channel_data.ceu>
 
 native/pre do
     int get_int(char* msg) {
@@ -18,7 +19,7 @@ native/nohold
     _get_int,
 ;
 
-code/await Handler (var Envelope env) -> void do
+code/await Handler (var& Channel channel, var Envelope env) -> void do
     var _plain_string msg = _stringify_bytes(env.contents.message.body);
     var int proc_time = _get_int(msg);
     _free(msg);

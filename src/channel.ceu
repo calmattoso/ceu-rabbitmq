@@ -6,6 +6,7 @@
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
+#include "channel_data.ceu"
 #include "envelope.ceu"
 #include "handler.ceu"
 
@@ -15,11 +16,6 @@ native/nohold
     _amqp_consume_message,
     _amqp_destroy_envelope,
 ;
-
-data Channel with
-    var& Connection conn;
-    var  int        id;
-end
 
 #include "ack.ceu"
 code/await LowHandler (var& Channel channel, var Envelope env) -> void
@@ -35,7 +31,7 @@ do
 #endif
         _amqp_destroy_envelope(&&env.contents);
     end
-    await Handler (env);
+    await Handler (&channel, env);
 
     // Acknowledge receipt of message is necessary
     var bool no_ack = [[ rmq_ctag_ack[@ctag] ]];

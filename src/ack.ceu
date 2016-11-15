@@ -4,7 +4,7 @@
 #include <c.ceu>
 #include <uv/uv.ceu>
 #include "amqp_base.ceu"
-#include "channel.ceu"
+#include "channel_data.ceu"
 
 native/nohold
     _amqp_basic_ack,

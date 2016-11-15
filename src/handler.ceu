@@ -5,9 +5,10 @@
 #include <uv/uv.ceu>
 
 #include "amqp_base.ceu"
+#include "channel_data.ceu"
 #include "envelope.ceu"
 
-code/await Handler (var Envelope env) -> void do
+code/await Handler (var& Channel channel, var Envelope env) -> void do
     _printf("Received message for ctag `%s`.\n", 
             _stringify_bytes(env.contents.consumer_tag));
     _amqp_dump(env.contents.message.body.bytes, env.contents.message.body.len);

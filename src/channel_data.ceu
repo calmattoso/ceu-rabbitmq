@@ -1,0 +1,12 @@
+#ifndef _CHANNEL_DATA
+#define _CHANNEL_DATA
+
+#include "connection.ceu"
+
+data Channel with
+    var& Connection conn;
+    var  int        id;
+end
+
+#endif
+
