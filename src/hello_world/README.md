@@ -60,7 +60,7 @@ In the diagram below, "P" is our producer and "C" is our consumer. The box in th
 > languages](http://rabbitmq.com/devtools.html). We'll
 > use the [ceu-rabbitmq](https://github.com/calmattoso/ceu-rabbitmq/), the most popular Céu client, in this tutorial.
 >
-> First, install `ceu-rabbitmq` by cloning the [GitHub repository]((https://github.com/calmattoso/ceu-rabbitmq/) and following the
+> First, install `ceu-rabbitmq` by cloning the [GitHub repository](https://github.com/calmattoso/ceu-rabbitmq/) and following the
 > instructions to set everything up. 
 >
 >```bash
@@ -290,4 +290,4 @@ If you want to check on the queue, try using `rabbitmqctl list_queues`.
 
 Hello World!
 
-Time to move on to [part 2](../work_queues/README.md) and build a simple _work queue_.
+Time to move on to [part 2](../work_queues/) and build a simple _work queue_.
