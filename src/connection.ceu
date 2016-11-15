@@ -2,7 +2,7 @@
 #define _CONNECTION_CEU
 
 #include <c.ceu>
-#include <sdl/sdl.ceu>
+#include <uv/uv.ceu>
 
 #include "amqp_base.ceu"
 
@@ -32,7 +32,7 @@ data Connection with
 end
 
 data ConnectionContext with
-    var _plain_string hostname = "localhost";
+    var _plain_string hostname    = "localhost";
     var int           port        = 5672;
     var _plain_string vhost       = "/";
     var int           channel_max = 0;
