@@ -18,7 +18,7 @@ RMQ_Channel(conn, channel, ch_ok);
 
 var& Queue queue;
 event& void q_ok;
-RMQ_Queue(channel, QueueContext("task_queue",_,_,_,_,_amqp_empty_table), queue, q_ok);
+RMQ_Queue(channel, QueueContext("task_queue",_,true,_,_,_amqp_empty_table), queue, q_ok);
 
 // Set ack to true...
 event& void qsub_ok;
