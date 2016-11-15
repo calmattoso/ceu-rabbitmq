@@ -31,6 +31,6 @@ RMQ_Qos(channel, QosContext(1,_), qos_ok);
 // Setup is done, so activate consumption
 RMQ_Consume(channel, default_handlers);
 
-_printf("Consuming messages from default exchange with key `task_queue`...\n\n");
+_printf("Consuming messages from queue `task_queue`...\n\n");
 
 await FOREVER;
