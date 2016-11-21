@@ -24,11 +24,10 @@ native
     _amqp_socket_t,
 ;
 
-#define RMQ_Connection(CTX, CONN, CONN_OK) spawn New_Connection(CTX) -> (&CONN, &CONN_OK); await CONN_OK
-
 data Connection with
-    var& _amqp_connection_state_t_ state;
-    var int channel_id;
+    var&   _amqp_connection_state_t_ state;
+    var    int                       channel_id;
+    event& int                       error;
 end
 
 data ConnectionContext with
@@ -44,54 +43,60 @@ end
 
 code/await New_Connection (var ConnectionContext ctx) 
                             -> (var& Connection conn, event& void ok)
-                                -> FOREVER
+                                -> int
 do
+    event int error_;
     var&? _amqp_connection_state_t_ state_;
     do
         state_ = &_amqp_new_connection();
     finalize (state_) with
-        var _amqp_rpc_reply_t res = _amqp_connection_close(&&state_!, _AMQP_REPLY_SUCCESS);
-        _die_on_amqp_error(res, "Closing connection.");
-        _die_on_error(_amqp_destroy_connection(&&state_!), "Destroying connection object."); // garbage collection
+        _check_amqp_error(_amqp_connection_close(&&state_!, _AMQP_REPLY_SUCCESS), "Closing connection.");
+        _check_error(_amqp_destroy_connection(&&state_!), "Destroying connection object."); // garbage collection
 #ifdef DEBUG
         _printf("Closed connection.\n");
 #endif
     end
 
-    var Connection conn_ = val Connection(&state_!, 1);
+    var Connection conn_ = val Connection(&state_!, 1, &error_);
     conn = &conn_;
 
     var _amqp_socket_t&& socket = _amqp_tcp_socket_new(&&state_!);
 	if socket == null then
-	    _die("creating TCP socket");
+        _fprintf(_stderr, "Failed to create TCP socket!\n");
+	    escape -1;
 	end
 
 	var int status = _amqp_socket_open(socket, ctx.hostname, ctx.port);
 	if status != 0 then
-        _die("opening TCP socket");
+        _fprintf(_stderr, "Failed to open TCP socket: %d\n", status);
+	    escape status;
 	end
 
     event void ok_;
     ok = &ok_;
 
     // requires "plain_string"
-    await async/thread (ctx, state_)
-    do
-        var _amqp_rpc_reply_t res = _amqp_login(&&state_!, ctx.vhost, ctx.channel_max,
-                                                ctx.frame_max, 0, ctx.sasl_method,
-                                                ctx.user, ctx.password);
-        _die_on_amqp_error(res, "Logging in");
+    var _amqp_rpc_reply_t res = _;
+    await async/thread (ctx, state_, res) do
+        res = _amqp_login(&&state_!, ctx.vhost, ctx.channel_max,
+                          ctx.frame_max, 0, ctx.sasl_method,
+                          ctx.user, ctx.password);
+    end
+
+    if _check_amqp_error(res, "Logging in") == _AMQP_REPLY_SUCCESS then
 #ifdef DEBUG
         _printf("Opened connection with context: { \n");
         _printf("\thostname: %s,\n\tport: %d,\n\tvhost: %s,\n\tchannel_max: %d,\n",
-                ctx.hostname, ctx.port, ctx.vhost, ctx.channel_max);
+                 ctx.hostname, ctx.port, ctx.vhost, ctx.channel_max);
         _printf("\tframe_max: %d,\n\tsasl_method: %d, \n\tuser: %s,\n\tpw: %s\n}\n",
-                ctx.frame_max, ctx.sasl_method, ctx.user, ctx.password);
+                 ctx.frame_max, ctx.sasl_method, ctx.user, ctx.password);
 #endif
-    end
-    emit ok_;
 
-    await FOREVER;
+        emit ok_;
+
+        var int err = await error_;
+        escape err;
+    end
 end
 
 code/tight Next_Channel_Id(var& Connection conn) -> int do
@@ -101,16 +106,21 @@ code/tight Next_Channel_Id(var& Connection conn) -> int do
 end
 
 #ifdef connection_test
+
+// little test
+
 var& Connection conn;
 event& void conn_ok;
 
-// little test
-RMQ_Connection(_, conn, conn_ok);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var int channel_id = call Next_Channel_Id(&conn);
-_printf("Cur. Channel ID: %d\nNext Channel ID: %d\n", channel_id, conn.channel_id);
+    var int channel_id = call Next_Channel_Id(&conn);
+    _printf("Cur. Channel ID: %d\nNext Channel ID: %d\n", channel_id, conn.channel_id);
+        
+    await 2s;    
+end;
 
-await 2s;
 escape 0;
 #endif
 
