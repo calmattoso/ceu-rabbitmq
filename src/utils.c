@@ -82,54 +82,61 @@ void die(const char *fmt, ...)
   exit(1);
 }
 
-void die_on_error(int x, char const *context)
+void check_error(int x, char const *context)
 {
   if (x < 0) {
     fprintf(stderr, "%s: %s\n", context, amqp_error_string2(x));
-    exit(1);
   }
 }
 
-void die_on_amqp_error(amqp_rpc_reply_t x, char const *context)
+int check_amqp_error(amqp_rpc_reply_t x, char const *context)
 {
+  char* header = "ERR :: ";
+
   switch (x.reply_type) {
   case AMQP_RESPONSE_NORMAL:
-    return;
+    return AMQP_REPLY_SUCCESS;
 
   case AMQP_RESPONSE_NONE:
-    fprintf(stderr, "%s: missing RPC reply type!\n", context);
-    break;
+    fprintf(stderr, "%s%s: missing RPC reply type!\n", header, context);
+    return AMQP_RESPONSE_NONE;
 
   case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-    fprintf(stderr, "%s: %s\n", context, amqp_error_string2(x.library_error));
-    break;
+    fprintf(stderr, "%s%s: %s\n", header, context, amqp_error_string2(x.library_error));
+    return AMQP_RESPONSE_LIBRARY_EXCEPTION;
 
   case AMQP_RESPONSE_SERVER_EXCEPTION:
     switch (x.reply.id) {
     case AMQP_CONNECTION_CLOSE_METHOD: {
       amqp_connection_close_t *m = (amqp_connection_close_t *) x.reply.decoded;
-      fprintf(stderr, "%s: server connection error %d, message: %.*s\n",
+      fprintf(stderr, "%s%s: server connection error %d, message: %.*s\n",
+              header,
               context,
               m->reply_code,
               (int) m->reply_text.len, (char *) m->reply_text.bytes);
-      break;
+      return AMQP_CONNECTION_CLOSE_METHOD;
     }
     case AMQP_CHANNEL_CLOSE_METHOD: {
       amqp_channel_close_t *m = (amqp_channel_close_t *) x.reply.decoded;
-      fprintf(stderr, "%s: server channel error %d, message: %.*s\n",
+      fprintf(stderr, "%s%s: server channel error %d, message: %.*s\n",
+              header,
               context,
               m->reply_code,
               (int) m->reply_text.len, (char *) m->reply_text.bytes);
-      break;
+      return AMQP_CHANNEL_CLOSE_METHOD;
     }
     default:
-      fprintf(stderr, "%s: unknown server error, method id 0x%08X\n", context, x.reply.id);
-      break;
+      fprintf(stderr, "%s%s: unknown server error, method id 0x%08X\n", header, context, x.reply.id);
+      return x.reply.id;
     }
-    break;
   }
+}
 
-  exit(1);
+void die_on_amqp_error(amqp_rpc_reply_t x, char const *context)
+{
+  if (check_amqp_error(x, context)) {
+    exit(1);
+  }
 }
 
 void dump_row(long count, int numinrow, int *chs)

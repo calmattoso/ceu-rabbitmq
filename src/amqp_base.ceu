@@ -1,8 +1,6 @@
 #ifndef _AMQP_BASE_CEU
 #define _AMQP_BASE_CEU
 
-#define C2CEU_STR(C_STR, CEU_STR) var int i, len = _strlen(C_STR); loop i in [0->len[ do CEU_STR = CEU_STR .. [C_STR[i]]; end
-
 [[
     rmq_ctag_htag = {}
     rmq_ctag_ack  = {}
@@ -13,6 +11,13 @@ native/pre do
     ##include "utils.c"
 end
 
+/*
+ var int ERR;
+ var Connection CONN;
+ var _plain_string MSG;
+*/
+#define CHECK_AMQP_ERROR(ERR, CONN, MSG) ERR = _check_amqp_error(_amqp_get_rpc_reply(&&CONN.state), MSG); if ERR != _AMQP_REPLY_SUCCESS then emit CONN.error(err); end
+
 native/plain 
     _plain_string, 
     _amqp_basic_properties_t, // properties for basic methods
@@ -21,6 +26,7 @@ native/plain
     _amqp_envelope_t,
     _amqp_empty_bytes,
     _amqp_empty_table,
+    _amqp_rpc_reply_t,
     _amqp_table_t,
 ;
 
@@ -33,14 +39,15 @@ native/nohold
     _amqp_bytes_malloc_dup,
     _amqp_dump,
     _amqp_get_rpc_reply,
+    _check_amqp_error,
+    _check_error,
     _die_on_amqp_error,
-    _die_on_error,
     _stringify_bytes,
 ;
 
 native
     _AMQP_REPLY_SUCCESS,
-    _amqp_rpc_reply_t,
+    _AMQP_RESPONSE_NORMAL,
     _die,
 ;
 
