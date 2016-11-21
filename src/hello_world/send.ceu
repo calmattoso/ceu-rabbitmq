@@ -7,14 +7,17 @@
 
 var& Connection conn;
 event& void conn_ok;
-RMQ_Connection(_, conn, conn_ok);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var& Channel channel;
-event& void ch_ok;
-RMQ_Channel(conn, channel, ch_ok);
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);
+    await ch_ok;
 
-RMQ_Publish(channel, amq_default, PublishContext("hello", "Hello from Ceu!",_,_,default_props));
-_printf("Published a message...\n");
+    await Publish(&channel, &amq_default, PublishContext("hello", "Hello from Ceu!",_,_,default_props));
+    _printf("Published a message...\n");
+end
 
 escape 0;
 

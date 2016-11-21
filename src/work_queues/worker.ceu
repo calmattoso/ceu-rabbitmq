@@ -10,27 +10,37 @@
 
 var& Connection conn;
 event& void conn_ok;
-RMQ_Connection(_, conn, conn_ok);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var& Channel channel;
-event& void ch_ok;
-RMQ_Channel(conn, channel, ch_ok);
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);
+    await ch_ok;
 
-var& Queue queue;
-event& void q_ok;
-RMQ_Queue(channel, QueueContext("task_queue",_,true,_,_,_amqp_empty_table), queue, q_ok);
+    var& Queue queue;
+    event& void q_ok;
+    spawn New_Queue(&channel, QueueContext("task_queue",_,true,_,_,_amqp_empty_table)) -> (&queue, &q_ok);
+    await q_ok;
 
-// Set ack to true...
-event& void qsub_ok;
-RMQ_Subscribe(channel, queue, SubscribeContext(_,false,_,_), 10, qsub_ok);
+    // Set ack to true...
+    event& void qsub_ok;
+    spawn Subscribe_Queue(&channel, &queue, SubscribeContext(_,false,_,_), 10) -> (&qsub_ok);
+    await qsub_ok;
 
-// Set prefetch to 1 message
-event& void qos_ok;
-RMQ_Qos(channel, QosContext(1,_), qos_ok);
+    // Set prefetch to 1 message
+    event& void qos_ok;
+    spawn Qos(&channel, QosContext(1,_)) -> (&qos_ok);
+    await qos_ok;
 
-// Setup is done, so activate consumption
-RMQ_Consume(channel, default_handlers);
+    // Setup is done, so activate consumption
+    spawn Channel_Consume(&channel, &default_handlers);
 
-_printf("Consuming messages from queue `task_queue`...\n\n");
+    _printf("Consuming messages from queue `task_queue`...\n\n");
 
-await FOREVER;
+    await FOREVER;
+end
+
+escape 0;
+
+

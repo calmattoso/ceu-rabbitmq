@@ -3,30 +3,20 @@
 
 #include <c.ceu>
 #include <uv/uv.ceu>
+
 #include <amqp_base.ceu>
 #include <envelope.ceu>
 #include <channel_data.ceu>
 
-native/pre do
-    int get_int(char* msg) {
-        int ret;
-        sscanf(msg, " %d", &ret);
-        return ret;
-    }
-end
-
-native/nohold
-    _get_int,
-;
-
 code/await Handler (var& Channel channel, var Envelope env) -> void do
-    var _plain_string msg = _stringify_bytes(env.contents.message.body);
-    var int proc_time = _get_int(msg);
+    var int proc_time = 0;
+    var _plain_string msg = _stringify_bytes(env.contents.message.body);    
+    _sscanf(msg as _char&&, " %d", &&proc_time);
     _free(msg);
 
-    _printf("[%lu] Processing message for %d seconds.\n", env.contents.delivery_tag, proc_time);
+    _printf("\n[%lu] Processing message for %d seconds.\n", env.contents.delivery_tag, proc_time);
     await (proc_time)s;
-    _printf("[%lu] Processed message for %d seconds!\n", env.contents.delivery_tag, proc_time);
+    _printf("[%lu] Processed message for %d seconds!\n\n", env.contents.delivery_tag, proc_time);
 end
 
 #endif

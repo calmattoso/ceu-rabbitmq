@@ -9,22 +9,28 @@
 
 var& Connection conn;
 event& void conn_ok;
-RMQ_Connection(_, conn, conn_ok);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var& Channel channel;
-event& void ch_ok;
-RMQ_Channel(conn, channel, ch_ok);
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);
+    await ch_ok;
 
-var& Queue queue;
-event& void q_ok;
-RMQ_Queue(channel, QueueContext("hello",_,_,_,_,_amqp_empty_table), queue, q_ok);
+    // Setup is done, so activate consumption
+    spawn Channel_Consume(&channel, &default_handlers);
 
-event& void qsub_ok;
-RMQ_Subscribe(channel, queue, _, 10, qsub_ok);
+    var& Queue queue;
+    event& void q_ok;
+    spawn New_Queue(&channel, QueueContext("hello",_,_,_,_,_amqp_empty_table)) -> (&queue, &q_ok);
+    await q_ok;
 
-// Setup is done, so activate consumption
-RMQ_Consume(channel, default_handlers);
+    event& void qsub_ok;
+    spawn Subscribe_Queue(&channel, &queue, _, 10) -> (&qsub_ok);
 
-_printf("Consuming messages from default exchange with key `hello`...\n\n");
+    _printf("Consuming messages from default exchange with key `hello`...\n\n");
 
-await FOREVER;
+    await FOREVER;
+end
+
+escape 0;

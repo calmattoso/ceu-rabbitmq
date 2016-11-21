@@ -7,21 +7,23 @@
 
 var& Connection conn;
 event& void conn_ok;
-RMQ_Connection(_, conn, conn_ok);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var& Channel channel;
-event& void ch_ok;
-RMQ_Channel(conn, channel, ch_ok);
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);
+    await ch_ok;
 
-// Generate task msg
-[[ math.randomseed(os.time()) ]];
-var        int  task_id = [[ math.random(15) ]];
-vector[50] byte task_msg = [] .. "";
-_sprintf((&&task_msg[0] as _char&&), "%d", task_id);
+    // Generate task msg
+    [[ math.randomseed(os.time()) ]];
+    var        int  task_id = [[ math.random(15) ]];
+    vector[50] byte task_msg = [] .. "";
+    _sprintf((&&task_msg[0] as _char&&), "%d", task_id);
 
-RMQ_Publish(channel, amq_default, PublishContext("task_queue", (&&task_msg[0] as _char&&),_,_,default_props));
-
-_printf("Posted a new task: %s\n", (&&task_msg[0] as _char&&));
+    spawn Publish(&channel, &amq_default, PublishContext("task_queue", (&&task_msg[0] as _char&&),_,_,default_props));
+    _printf("Posted a new task: %s\n", (&&task_msg[0] as _char&&));
+end
 
 escape 0;
 
