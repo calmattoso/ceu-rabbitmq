@@ -21,8 +21,7 @@ native/nohold
 code/await LowHandler (var& Channel channel, var Envelope env) -> void
 do
     var _plain_string ctag_str = _stringify_bytes(env.contents.consumer_tag);
-    vector[] byte ctag = [].."";
-    C2CEU_STR(ctag_str, ctag);
+    vector[] byte ctag = [] .. (ctag_str as _char&&);
     _free(ctag_str);
 
     do finalize with
@@ -36,21 +35,21 @@ do
     // Acknowledge receipt of message is necessary
     var bool no_ack = [[ rmq_ctag_ack[@ctag] ]];
     if not no_ack then
-        RMQ_Ack(channel, env);
+        await Ack(&channel, &env);
 #ifdef DEBUG
         _printf("Acknowledged receipt of envelope with consumer tag `%s`.\n", (&&ctag[0] as _char&&));
 #endif
     end
 end
 
-#define RMQ_Channel(CONN, CH, CH_OK) spawn New_Channel(&CONN) -> (&CH, &CH_OK); await CH_OK
 code/await New_Channel (var& Connection conn) 
                             -> (var& Channel ch, event& void ok)
                                 -> FOREVER 
 do
     // export channel
     var int channel_id = call Next_Channel_Id(&conn);
-    var Channel ch_ = val Channel(&conn, channel_id);
+    event void start_consuming, stop_consuming;
+    var Channel ch_ = val Channel(&conn, channel_id, &start_consuming, &stop_consuming);
     ch = &ch_;
 
 #ifdef DEBUG
@@ -61,69 +60,88 @@ do
     await async/thread(ch_) do
         _amqp_channel_open(&&ch_.conn.state, ch_.id);
     end
-    _die_on_amqp_error(_amqp_get_rpc_reply(&&ch_.conn.state), "Opening channel");
+
+    
+    var int err;
+    CHECK_AMQP_ERROR(err, ch_.conn, "Opening channel");
+
 #ifdef DEBUG
     _printf("Opened channel with ID %d!\n", ch_.id);
 #endif
     emit ok_;
    
     do finalize with
-        _die_on_amqp_error(_amqp_channel_close(&&ch_.conn.state, ch_.id, _AMQP_REPLY_SUCCESS), "Closing channel");
+        _amqp_channel_close(&&ch_.conn.state, ch_.id, _AMQP_REPLY_SUCCESS);
+        _check_amqp_error(_amqp_get_rpc_reply(&&ch_.conn.state), "Closing channel");
 #ifdef DEBUG
         _printf("Closed channel!\n");
 #endif  
     end
-
+    
     await FOREVER;
 end
 
-#define RMQ_Consume(CH, HANDLERS) spawn Channel_Consume(&CH, &HANDLERS)
-code/await Channel_Consume(var& Channel ch, pool&[] LowHandler handlers)
-                                -> FOREVER
+code/await Channel_Consume (var& Channel channel, pool&[] LowHandler handlers)  -> FOREVER
 do
+    // Consumption phase...
     loop do
+        par/or do
+            await channel.pause_consuming;
 #ifdef DEBUG
-        _printf("Consuming...\n");
+            _printf("Consumption halted...\n");
 #endif
-        var _amqp_envelope_t envelope = _;
+        with
+            loop do
+        #ifdef DEBUG
+                _printf("Consuming...\n");
+        #endif
+                var _amqp_envelope_t envelope = _;
 
-        // Get messages received by the channel and dispatch to handlers...
-        await async/thread(ch, envelope) do
-            // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
-            //                      struct timeval *timeout, AMQP_UNUSED int flags)
-            _amqp_consume_message(&&ch.conn.state, &&envelope, null, 0);
+                // Get messages received by the channel and dispatch to handlers...
+                await async/thread(channel, envelope) do
+                    // amqp_consume_message(amqp_connection_state_t state, amqp_envelope_t *envelope,
+                    //                      struct timeval *timeout, AMQP_UNUSED int flags)
+                    _amqp_consume_message(&&channel.conn.state, &&envelope, null, 0);
+                end
+        #ifdef DEBUG
+                _printf("Received msg!\n");
+        #endif
+                
+                var _plain_string ctag_str = _stringify_bytes(envelope.consumer_tag);
+                vector[] byte ctag_ceu_str = [] .. (ctag_str as _char&&);
+                _free(ctag_str);
+                var int htag = [[ rmq_ctag_htag[@ctag_ceu_str] or -1 ]];
+
+                spawn LowHandler(&channel, Envelope(envelope, htag)) in handlers;
+            end
         end
-#ifdef DEBUG
-        _printf("Received msg!\n");
-#endif
-        
-        var _plain_string ctag_str = _stringify_bytes(envelope.consumer_tag);
-        vector[] byte ctag_ceu_str = [].."";
-        C2CEU_STR(ctag_str, ctag_ceu_str);
-        _free(ctag_str);
-        var int htag = [[ rmq_ctag_htag[@ctag_ceu_str] ]];
-
-        spawn LowHandler(&ch, Envelope(envelope, htag)) in handlers;
+        await channel.start_consuming;
     end
 end
 
+// Default pool for LowHandler objects.
 pool[] LowHandler default_handlers;
 
 #ifdef channel_test
-par/or do
-    var& Connection conn;
-    event& void conn_ok;
-    RMQ_Connection(_, conn, conn_ok);
+var& Connection conn;
+event& void conn_ok;
+
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
     var& Channel ch;
     event& void ch_ok;
-    RMQ_Channel(conn, ch, ch_ok);
+    spawn New_Channel(&conn) -> (&ch, &ch_ok);
+    await ch_ok;
 
-    RMQ_Consume(ch, default_handlers);
+    spawn Channel_Consume(&ch, &default_handlers);
+
+    await 1s;
+    emit ch.pause_consuming;
+    await 1s;
+    emit ch.start_consuming;
     
-    await FOREVER;
-with
-    await 2s;
+    await 1s;
     _printf("Test over...\n");
 end
 

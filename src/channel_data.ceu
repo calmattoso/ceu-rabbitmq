@@ -4,8 +4,10 @@
 #include "connection.ceu"
 
 data Channel with
-    var& Connection conn;
-    var  int        id;
+    var&   Connection conn;
+    var    int        id;
+    event& void       start_consuming;
+    event& void       pause_consuming;
 end
 
 #endif
