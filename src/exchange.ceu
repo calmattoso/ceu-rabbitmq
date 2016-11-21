@@ -34,8 +34,6 @@ data ExchangeContext with
     var _amqp_table_t arguments   = _amqp_empty_table;
 end
 
-#define RMQ_Exchange(CH, CTX, EX, EX_OK) spawn New_Exchange(&CH, CTX) -> (&EX, &EX_OK); await EX_OK 
-
 code/await New_Exchange (var& Channel channel, var ExchangeContext ctx)
                             -> (var& Exchange ex, event& void ok)
                                 -> FOREVER
@@ -73,22 +71,28 @@ do
         //                       amqp_bytes_t exchange, amqp_bytes_t type, amqp_boolean_t passive,
         //                       amqp_boolean_t durable, amqp_boolean_t auto_delete, 
         //                       amqp_boolean_t internal, amqp_table_t arguments);
+        emit channel.pause_consuming;
         await async/thread(channel, ctx, name_bytes, type_bytes) do
             _amqp_exchange_declare(&&channel.conn.state, channel.id, name_bytes, 
                                    type_bytes, ctx.passive as _amqp_boolean_t, 
                                    ctx.durable as _amqp_boolean_t, ctx.auto_delete as _amqp_boolean_t,
                                    ctx.internal as _amqp_boolean_t, ctx.arguments);
         end
-        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring exchange");
+        var int err;
+        CHECK_AMQP_ERROR(err, channel.conn, "Declaring exchange");
+
 #ifdef DEBUG
         _printf("Declared exchange of type `%s` with name `%s`.\n", ctx.type, ctx.name);
 #endif
-        emit ok_;
-#ifdef DEBUG
+
+        emit channel.start_consuming;
     else
+        await 1us;
+#ifdef DEBUG
         _printf("Using default exchange `%s`.\n", _stringify_bytes(name_bytes));
 #endif    
     end
+    emit ok_;
 
     await FOREVER;
 end
@@ -103,27 +107,36 @@ var Exchange amq_default = val Exchange(_amqp_cstring_bytes(AMQ_DEFAULT)),
 #ifdef exchange_test
 var& Connection conn;
 event& void conn_ok;
-RMQ_Connection(_, conn, conn_ok);
 
-var& Channel channel;
-event& void ch_ok;
-RMQ_Channel(conn, channel, ch_ok);
-    
-var& Exchange e;
-event& void ex_ok1;
-RMQ_Exchange(channel, ExchangeContext("test_exchange_topic", "topic",_,_,_,_,_), e, ex_ok1);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var& Exchange e2;
-event& void ex_ok2;
-RMQ_Exchange(channel, ExchangeContext("test_exchange_direct",_,_,_,_,_,_), e2, ex_ok2);
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);
+    await ch_ok;
+        
+    spawn Channel_Consume(&channel, &default_handlers);
 
-// Below shows the function "creates" the default exchange correctly. However,
-// the default instantiated exchanges should be used instead.
-var& Exchange user_amq_def;
-event& void ex_ok3;
-spawn New_Exchange(&channel, _) -> (&user_amq_def, &ex_ok3); // no await here
+    var& Exchange e;
+    event& void ex_ok1;
+    spawn New_Exchange(&channel, ExchangeContext("test_exchange_topic", "topic",_,_,_,_,_)) -> (&e, &ex_ok1);
+    await ex_ok1;
 
-await 2s;
+    var& Exchange e2;
+    event& void ex_ok2;
+    spawn New_Exchange(&channel, ExchangeContext("test_exchange_direct",_,_,_,_,_,_)) -> (&e2, &ex_ok2);
+    await ex_ok2;
+
+    // Below shows the function "creates" the default exchange correctly. However,
+    // the default instantiated exchanges should be used instead.
+    var& Exchange user_amq_def;
+    event& void ex_ok3;
+    spawn New_Exchange(&channel, _) -> (&user_amq_def, &ex_ok3); // no await here
+    await ex_ok3;
+
+    await 2s;
+end
 
 escape 0;
 #endif

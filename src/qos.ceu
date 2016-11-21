@@ -5,6 +5,7 @@
 #include <uv/uv.ceu>
 
 #include "amqp_base.ceu"
+#include "release.ceu"
 #include "connection.ceu"
 #include "channel.ceu"
 
@@ -18,59 +19,82 @@ data QosContext with
     var bool global         = false;
 end
 
-code/await Qos_Release(var& Channel channel) -> void
-do
-    await async/thread(channel) do
-        _amqp_basic_qos(&&channel.conn.state, channel.id, 0, AMQP_CONSUME_MAX_PREFETCH_COUNT, false);
-    #ifdef DEBUG
-        _printf("Restored QOS to default values...\n");  
-    #endif
-    end
+data Release_Target.Qos with
+    var byte dummy;
 end
-pool[] Qos_Release rmq_qos_release;
 
-#define RMQ_Qos(CH, CTX, QOS_OK) spawn Qos(&CH, CTX, &rmq_qos_release) -> (&QOS_OK); await QOS_OK;
-code/await Qos(var& Channel channel, var QosContext ctx, pool&[] Qos_Release qos_release) 
+code/await/dynamic Release_Entity(var& Channel channel, dynamic var& Release_Target.Qos target) -> void
+do
+    emit channel.pause_consuming;
+
+    var int err = 0;
+    await async/thread(channel, err) do
+        err = _amqp_basic_qos(&&channel.conn.state, channel.id, 0, AMQP_CONSUME_MAX_PREFETCH_COUNT, false);
+    end
+    if err == 0 then
+        _fprintf(_stderr, "ERR :: basic.qos: %d\n", err);
+	    emit channel.conn.error(err);
+    end
+
+#ifdef DEBUG
+    _printf("Restored QOS to default values...\n");  
+#endif
+
+    emit channel.start_consuming;
+end
+
+code/await Qos(var& Channel channel, var QosContext ctx) 
                 -> (event& void ok)                
                     -> FOREVER
 do
     event void ok_;
     ok = &ok_;
 
-    var int ret = 1;
-    await async/thread(channel, ctx, ret) do
-        ret = _amqp_basic_qos(&&channel.conn.state, channel.id, 0, ctx.prefetch_count, ctx.global);
+    var int err = 0;
+    emit channel.pause_consuming;
+    await async/thread(channel, ctx, err) do
+        err = _amqp_basic_qos(&&channel.conn.state, channel.id, 0, ctx.prefetch_count, ctx.global);
     end
     
-    if ret == 0 then
-        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "basic.qos");
+    if err == 0 then
+        _fprintf(_stderr, "ERR :: basic.qos: %d\n", err);
+	    emit channel.conn.error(err);
     end
 #ifdef DEBUG
     _printf("Set `prefetch` to %d with `global` == %d\n", ctx.prefetch_count, ctx.global);  
 #endif
 
+    var Release_Target.Qos target_qos = val Release_Target.Qos(_);
     do finalize with
         //_amqp_basic_qos(&&channel.conn.state, channel.id, 0, AMQP_CONSUME_MAX_PREFETCH_COUNT, false);
-        spawn Qos_Release(&channel) in qos_release;
+        spawn/dynamic Release_Entity(&channel, &target_qos) in outer.default_release_pool;
     end
     
+    emit channel.start_consuming;
     emit ok_;
+
     await FOREVER;
 end
 
 #ifdef qos_test
 var& Connection conn;
 event& void conn_ok;
-RMQ_Connection(_, conn, conn_ok);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var& Channel channel;
-event& void ch_ok;
-RMQ_Channel(conn, channel, ch_ok);
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);
+    await ch_ok;
 
-event& void qos_ok;
-RMQ_Qos(channel, QosContext(1,true), qos_ok);
+    spawn Channel_Consume(&channel, &default_handlers);
 
-await 1s;
+    event& void qos_ok;
+    spawn Qos(&channel, QosContext(1,true)) -> (&qos_ok);
+    await qos_ok;
+
+    await 1s;
+end
 
 escape 0;
 #endif

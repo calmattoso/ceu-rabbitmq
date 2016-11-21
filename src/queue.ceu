@@ -30,8 +30,6 @@ data QueueContext with
     var _amqp_table_t arguments   = _amqp_empty_table;
 end
 
-#define RMQ_Queue(CH, Q_CTX, Q, Q_OK) spawn New_Queue(&CH, Q_CTX) -> (&Q, &Q_OK); await Q_OK
-
 code/await New_Queue (var& Channel channel, var QueueContext ctx)
                         -> (var& Queue q, event& void ok)
                             -> FOREVER
@@ -56,6 +54,7 @@ do
     var Queue q_ = val Queue(_);
     q = &q_;
 
+    emit channel.pause_consuming;
     await async/thread(channel, ctx, name_bytes, q_) do 
         var _amqp_queue_declare_ok_t&& r = 
             _amqp_queue_declare(&&channel.conn.state, channel.id, name_bytes, 
@@ -64,24 +63,27 @@ do
                                 ctx.exclusive as _amqp_boolean_t,
                                 ctx.auto_delete as _amqp_boolean_t,
                                 ctx.arguments);
-        _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Declaring queue");
         q_.name_bytes = (*r).queue; 
     end
+    var int err;
+    CHECK_AMQP_ERROR(err, channel.conn, "Declaring queue.");
 
 #ifdef DEBUG
     _printf("Declared queue with name `%s`.\n", _stringify_bytes(q_.name_bytes));
 #endif
 
+    emit channel.start_consuming;
     emit ok_;
 
-    // Delete queue upon termination...
+    /* Delete queue upon termination...
     do finalize with
+        
         _amqp_queue_delete(&&channel.conn.state, channel.id, name_bytes, false, false);
         _die_on_amqp_error(_amqp_get_rpc_reply(&&channel.conn.state), "Deleting queue.");
 #ifdef DEBUG
         _printf("Deleted queue with name `%s`.\n", _stringify_bytes(q_.name_bytes));
 #endif
-    end
+    end*/
 
     await FOREVER;
 end
@@ -90,25 +92,33 @@ end
 // little test
 var& Connection conn;
 event& void conn_ok;
-RMQ_Connection(_, conn, conn_ok);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var& Channel channel;
-event& void ch_ok;
-RMQ_Channel(conn, channel, ch_ok);
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);
+    await ch_ok;
 
-var& Queue q;
-event& void q_ok1;
-RMQ_Queue(channel, QueueContext("test_queue",_,_,_,_,_), q, q_ok1);
+    spawn Channel_Consume(&channel, &default_handlers);
 
-var& Queue q2;
-event& void q_ok2;
-RMQ_Queue(channel, QueueContext("",_,_,_,false,_), q2, q_ok2);
+    var& Queue q;
+    event& void q_ok1;
+    spawn New_Queue(&channel, QueueContext("test_queue",_,_,_,_,_)) -> (&q, &q_ok1);
+    await q_ok1;
 
-var& Queue q_null_name;
-event& void q_ok3;
-RMQ_Queue(channel, _, q_null_name, q_ok3);
+    var& Queue q2;
+    event& void q_ok2;
+    spawn New_Queue(&channel, QueueContext("",_,_,_,false,_)) -> (&q2, &q_ok2);
+    await q_ok2;
 
-await 2s;
+    var& Queue q_null_name;
+    event& void q_ok3;
+    spawn New_Queue(&channel, _) -> (&q_null_name, &q_ok3);
+    await q_ok3;
+
+    await 2s;
+end
 
 escape 0;
 #endif

@@ -43,8 +43,10 @@ do
     //                        amqp_boolean_t mandatory, amqp_boolean_t immediate,
     //                        struct amqp_basic_properties_t_ const *properties,
     //                        amqp_bytes_t body)
-    await async/thread (channel, exchange, ctx) do
-        var int ret = 0;
+    emit channel.pause_consuming;
+    var int ret = 0;
+    await async/thread (channel, exchange, ctx, ret) do
+        
 
         var _amqp_bytes_t body_bytes        = _amqp_cstring_bytes(ctx.body),
                           routing_key_bytes = _amqp_cstring_bytes(ctx.routing_key);
@@ -52,34 +54,46 @@ do
         ret = _amqp_basic_publish(&&channel.conn.state, channel.id, exchange.name_bytes,
                                   routing_key_bytes, ctx.mandatory as _amqp_boolean_t,
                                   ctx.immediate as _amqp_boolean_t, &&ctx.properties, body_bytes);
-        _die_on_error(ret, "Failed to publish message.");
-#ifdef DEBUG
-        _printf("Published message!\n");
-#endif
     end
+
+    _check_error(ret, "Failed to publish message.");
+    if ret < 0 then
+        emit channel.conn.error(ret);
+    end
+
+#ifdef DEBUG
+    _printf("Published message!\n");
+#endif
+
+    emit channel.start_consuming;
 end
 
 #ifdef publish_test
 // little test
 var& Connection conn;
 event& void conn_ok;
-RMQ_Connection(_, conn, conn_ok);
+watching New_Connection(_) -> (&conn, &conn_ok) do
+    await conn_ok;
 
-var& Channel channel;
-event& void ch_ok;
-RMQ_Channel(conn, channel, ch_ok);    
+    var& Channel channel;
+    event& void ch_ok;
+    spawn New_Channel(&conn) -> (&channel, &ch_ok);    
+    await ch_ok;
 
-par/or do
-    vector[50] byte msg;
+    spawn Channel_Consume(&channel, &default_handlers);
 
-    var int i;
-    loop i do
-        _sprintf((&&msg[0] as _char&&), "Hello from Ceu! %d", i);
-        RMQ_Publish(channel, amq_default, PublishContext("hello", (&&msg[0] as _char&&),_,_,_));
-        await 1ms;    
+    par/or do
+        vector[50] byte msg;
+
+        var int i;
+        loop i do
+            _sprintf((&&msg[0] as _char&&), "Hello from Ceu! %d", i);
+            await Publish(&channel, &amq_default, PublishContext("hello", (&&msg[0] as _char&&),_,_,_));
+            await 1s;    
+        end
+    with    
+        await 5s;
     end
-with    
-    await 10s;
 end
 
 escape 0;
