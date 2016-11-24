@@ -1,0 +1,20 @@
+#ifndef _RELEASE_CEU
+#define _RELEASE_CEU
+
+native/pre do
+    ##include <assert.h>
+end
+
+#include "channel_data.ceu"
+
+data Release_Target as nothing;
+
+code/await/dynamic Release_Entity(var& Channel channel, dynamic var& Release_Target target) -> void
+do
+    _assert(0);
+end
+
+pool[] Release_Entity default_release_pool;
+
+#endif
+
