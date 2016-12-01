@@ -6,7 +6,7 @@
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
-#include "channel.ceu"
+#include "channel_data.ceu"
 
 native/plain
     _amqp_queue_declare_ok_t,
@@ -89,6 +89,8 @@ do
 end
 
 #if queue_test
+#include "channel.ceu"
+
 // little test
 var& Connection conn;
 event& void conn_ok;

@@ -6,7 +6,7 @@
 
 #include "amqp_base.ceu"
 #include "connection.ceu"
-#include "channel.ceu"
+#include "channel_data.ceu"
 #include "release.ceu"
 #include "queue.ceu"
 #include "q2x_bind.ceu"
@@ -111,6 +111,8 @@ do
 end
 
 #ifdef q_subscribe_test
+#include "channel.ceu"
+
 var& Connection conn;
 event& void conn_ok;
 watching New_Connection(_) -> (&conn, &conn_ok) do
