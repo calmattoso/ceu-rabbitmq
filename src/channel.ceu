@@ -8,7 +8,10 @@
 #include "connection.ceu"
 #include "channel_data.ceu"
 #include "envelope.ceu"
+
+#ifdef channel_test
 #include "handler.ceu"
+#endif
 
 native/nohold
     _amqp_channel_open,
